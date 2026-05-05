@@ -1,7 +1,11 @@
 .env
+trade.env
+*.env
 __pycache__/
 *.pyc
 *.pyo
 *.log
 *.csv
 .DS_Store
+*.dmg
+*.xcuserstate
