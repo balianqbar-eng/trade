@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>樂齡宅藥事管理訂閱制 — 商業模式分析</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 40px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 22px; font-weight: 700; border-bottom: 3px solid #059669; padding-bottom: 10px; margin-bottom: 6px; }
+  .subtitle { color: #666; font-size: 12px; margin-bottom: 32px; }
+  h2 { font-size: 16px; font-weight: 700; color: #065f46; margin: 32px 0 10px; padding-left: 10px; border-left: 4px solid #059669; }
+  h3 { font-size: 14px; font-weight: 700; color: #064e3b; margin: 20px 0 6px; }
+  p { margin-bottom: 8px; }
+  ul { margin: 6px 0 10px 20px; }
+  li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 12px; }
+  th { background: #065f46; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f0fdf4; }
+  .box { border-radius: 8px; padding: 16px 20px; margin: 16px 0; }
+  .box-green { background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .box-yellow { background: #fffbeb; border: 1px solid #fde68a; }
+  .box-red { background: #fff1f2; border: 1px solid #fecdd3; }
+  .box-blue { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .box h3 { margin-top: 0; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-yellow { background: #fef9c3; color: #854d0e; }
+  .tag-red { background: #fee2e2; color: #991b1b; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 28px 0; }
+  .number-big { font-size: 28px; font-weight: 700; color: #059669; }
+  .number-label { font-size: 11px; color: #666; }
+  .kpi-row { display: flex; gap: 20px; margin: 16px 0; flex-wrap: wrap; }
+  .kpi-card { flex: 1; min-width: 120px; background: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px 16px; text-align: center; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #e2e8f0; color: #999; font-size: 11px; }
+  @media print {
+    body { padding: 20px; font-size: 11px; }
+    table { page-break-inside: avoid; }
+    .box { page-break-inside: avoid; }
+    .kpi-row { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>樂齡宅藥事管理訂閱制</h1>
+<div class="subtitle">商業模式分析 ｜ Benjamin Wang ｜ 2026-05-04</div>
+
+<!-- 商業模式概述 -->
+<h2>商業模式概述</h2>
+<p>以藥商、保健食品、儀器商三重背景為核心，提供樂齡宅管理公司「全住戶用藥管理外包服務」，結合自律神經檢測儀與智能戒指追蹤用藥效果，形成競爭者難以複製的差異化。</p>
+
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="number-big">B2B</div>
+    <div class="number-label">主要客戶：樂齡宅管理公司</div>
+  </div>
+  <div class="kpi-card">
+    <div class="number-big">訂閱制</div>
+    <div class="number-label">按住戶數月費收取</div>
+  </div>
+  <div class="kpi-card">
+    <div class="number-big">25戶</div>
+    <div class="number-label">損益平衡點</div>
+  </div>
+  <div class="kpi-card">
+    <div class="number-big">50戶</div>
+    <div class="number-label">獲利轉折點</div>
+  </div>
+</div>
+
+<h3>服務內容</h3>
+<table>
+  <tr><th>服務項目</th><th>說明</th></tr>
+  <tr><td>慢性病處方整合</td><td>協助每位住戶統整所有用藥，排除多重用藥衝突</td></tr>
+  <tr><td>包藥配送</td><td>藥餐包模式（一餐一包，印時間、劑量、藥名），每週配送到戶</td></tr>
+  <tr><td>藥事諮詢</td><td>藥師定期到訪或遠端諮詢，處理用藥問題</td></tr>
+  <tr><td>用藥效果追蹤</td><td>自律神經儀＋智能戒指，量化監測血壓、睡眠、自律神經變化</td></tr>
+  <tr><td>家屬月報告</td><td>用藥紀錄＋健康數據報告，提升家屬信任度</td></tr>
+  <tr><td>保健品個人化建議</td><td>根據儀器數據推薦保健食品（選購），提升客單價</td></tr>
+</table>
+
+<hr>
+
+<!-- 中部市場 -->
+<h2>中部目標客戶</h2>
+<table>
+  <tr><th>機構名稱</th><th>地點</th><th>規模</th><th>月費</th><th>優先度</th></tr>
+  <tr><td>合勤健康共生宅 烏日館</td><td>台中市烏日區</td><td>25間長住戶</td><td>4.7–8.7萬/戶</td><td><span class="tag tag-green">立即可談</span></td></tr>
+  <tr><td>合勤共生宅 天暖館</td><td>苗栗市</td><td>樂齡社區</td><td>7.8萬/月</td><td><span class="tag tag-yellow">次優先</span></td></tr>
+  <tr><td>明日葉樂活養生村</td><td>台中市西屯區</td><td>430戶</td><td>購買制</td><td><span class="tag tag-green">提前簽約（2027開幕）</span></td></tr>
+</table>
+
+<div class="box box-blue">
+  <h3>策略重點</h3>
+  <p>合勤烏日館作為試點建立SOP與案例，同步與明日葉談開幕前預簽約。明日葉430戶若簽下，規模問題一次解決。</p>
+</div>
+
+<hr>
+
+<!-- 收入試算 -->
+<h2>收入試算（試點：25戶）</h2>
+<table>
+  <tr><th>項目</th><th>單價</th><th>數量</th><th>月收入</th></tr>
+  <tr><td>藥事管理月費</td><td>1,200元/戶</td><td>25戶</td><td>30,000元</td></tr>
+  <tr><td>保健品加購（選購）</td><td>平均500元/戶</td><td>估10戶</td><td>5,000元</td></tr>
+  <tr><td><strong>月收合計</strong></td><td></td><td></td><td><strong>35,000元</strong></td></tr>
+</table>
+
+<hr>
+
+<!-- 成本試算 -->
+<h2>成本試算（試點：25戶）</h2>
+<table>
+  <tr><th>項目</th><th>月成本</th><th>備註</th></tr>
+  <tr><td>兼職藥師（每週到訪2次）</td><td>18,000元</td><td>時薪400元 × 9小時 × 4週</td></tr>
+  <tr><td>包藥耗材（藥袋、藥盒）</td><td>5,000元</td><td>每戶約200元</td></tr>
+  <tr><td>用藥管理系統（SaaS訂閱）</td><td>3,000元</td><td>現成軟體</td></tr>
+  <tr><td>配送交通</td><td>2,000元</td><td>自行處理</td></tr>
+  <tr><td>設備折舊（自律神經儀）</td><td>1,000元</td><td>已有設備攤提</td></tr>
+  <tr><td>雜費／職業責任保險</td><td>2,000元</td><td></td></tr>
+  <tr><td><strong>月成本合計</strong></td><td><strong>31,000元</strong></td><td></td></tr>
+</table>
+
+<div class="box box-yellow">
+  <h3>試點月獲利</h3>
+  <p>月收 35,000 − 月成本 31,000 = <strong>月獲利 4,000元（25戶幾乎打平）</strong></p>
+  <p>試點階段以建立案例、跑通SOP為目標，獲利為次要考量。</p>
+</div>
+
+<hr>
+
+<!-- 損益平衡 -->
+<h2>損益平衡分析</h2>
+<p>固定成本約 25,000元/月，每戶毛利約 1,000元：</p>
+<p style="font-size:16px; font-weight:700; color:#059669; margin:12px 0;">損益平衡點 = 25,000 ÷ 1,000 = <u>25 戶</u></p>
+
+<hr>
+
+<!-- 規模化獲利 -->
+<h2>規模化獲利預測</h2>
+<table>
+  <tr><th>戶數</th><th>對應棟數</th><th>月收入</th><th>月成本</th><th>月獲利</th><th>年獲利</th></tr>
+  <tr><td>25戶</td><td>1棟（試點）</td><td>35,000</td><td>31,000</td><td>4,000</td><td>48,000</td></tr>
+  <tr><td>50戶</td><td>2棟</td><td>70,000</td><td>40,000</td><td><strong>30,000</strong></td><td><strong>360,000</strong></td></tr>
+  <tr><td>100戶</td><td>4棟</td><td>140,000</td><td>58,000</td><td><strong>82,000</strong></td><td><strong>984,000</strong></td></tr>
+  <tr><td>200戶</td><td>8棟</td><td>280,000</td><td>95,000</td><td><strong>185,000</strong></td><td><strong>2,220,000</strong></td></tr>
+  <tr style="background:#ecfdf5; font-weight:700;"><td>430戶（明日葉）</td><td>1個園區</td><td>602,000</td><td>168,000</td><td><strong>434,000</strong></td><td><strong>5,208,000</strong></td></tr>
+</table>
+
+<p style="font-size:11px; color:#666;">* 成本擴張緩慢（1位藥師可服務多棟），收入線性成長，規模化後毛利率持續提升。</p>
+
+<hr>
+
+<!-- 啟動成本 -->
+<h2>啟動成本（一次性）</h2>
+<table>
+  <tr><th>項目</th><th>費用</th><th>備註</th></tr>
+  <tr><td>合作藥局設立協議費</td><td>50,000–100,000元</td><td>與現有藥局合作或申設衛星藥局</td></tr>
+  <tr><td>用藥管理系統建置</td><td>30,000–80,000元</td><td>客製開發或SaaS改造</td></tr>
+  <tr><td>業務開發、提案</td><td>時間成本</td><td></td></tr>
+  <tr><td>設備（自律神經儀、戒指）</td><td>0元</td><td>已有</td></tr>
+  <tr><td><strong>合計</strong></td><td><strong>80,000–180,000元</strong></td><td></td></tr>
+</table>
+
+<hr>
+
+<!-- 需突破的問題 -->
+<h2>需突破的四大問題</h2>
+
+<div class="box box-red">
+  <h3>1. 法規關卡（最硬）</h3>
+  <ul>
+    <li>藥師調劑依法須在藥局內執行，到戶配送有法律模糊地帶</li>
+    <li>若在樂齡宅內操作包藥、儲藥，可能需申設衛星藥局（成本高、審查慢）</li>
+    <li>健保居家藥事照護給付條件嚴格，恐需全自費</li>
+  </ul>
+  <p><strong>突破：</strong>先以「藥事諮詢顧問」切入（不調劑），配合合作藥局處理調劑，主導管理系統和用藥評估。</p>
+</div>
+
+<div class="box box-yellow">
+  <h3>2. 客戶端阻力</h3>
+  <ul>
+    <li>樂齡宅管理公司可能已有配合藥局</li>
+    <li>住戶月費已4–8萬，若再加藥事費用接受度有疑問</li>
+    <li>住戶習慣在固定診所拿藥，整合有摩擦</li>
+  </ul>
+  <p><strong>突破：</strong>不收住戶費，定位成管理公司的「加值服務、差異化賣點」，初期由管理公司吸收費用。</p>
+</div>
+
+<div class="box box-yellow">
+  <h3>3. 處方整合難度</h3>
+  <ul>
+    <li>一位住戶可能有3–5家診所的處方，跨院整合無統一平台</li>
+    <li>多重用藥衝突判斷需藥師逐案處理，人力密集</li>
+    <li>健保處方箋有使用期限，協調時間成本高</li>
+  </ul>
+  <p><strong>突破：</strong>先從「用藥清單整理」開始，用儀器數據讓住戶看到量化改變，建立信任後再深化。</p>
+</div>
+
+<div class="box box-yellow">
+  <h3>4. 規模化瓶頸（長期）</h3>
+  <ul>
+    <li>中部樂齡宅目前只有2–3個，短期市場小</li>
+    <li>具長照藥師資格的藥師招募困難</li>
+    <li>儀器數據與藥事系統整合需要開發成本</li>
+  </ul>
+  <p><strong>突破：</strong>樂齡宅是切入點，用案例數據打包成「管理輸出」服務，複製到一般長照住宿機構（松藥局模式），或賣給保險公司做核保工具。</p>
+</div>
+
+<hr>
+
+<!-- 思考脈絡 -->
+<h2>商業模式思考脈絡</h2>
+<table>
+  <tr><th>層次</th><th>問題</th><th>結論</th></tr>
+  <tr><td>市場掃描</td><td>長照3.0有哪些B2B機會？</td><td>8個方案，方案七（管理輸出）性價比最高</td></tr>
+  <tr><td>競爭過濾</td><td>有沒有競爭者？空白在哪？</td><td>樂齡宅管理輸出幾乎無競爭者</td></tr>
+  <tr><td>資源盤點</td><td>手上有什麼籌碼？</td><td>智能戒指＋自律神經儀＋藥商＋保健食品</td></tr>
+  <tr><td>切入點鎖定</td><td>有人在做送藥服務嗎？</td><td>有（松藥局），但針對樂齡宅的全戶管理是空白</td></tr>
+  <tr><td>地理收斂</td><td>中部有哪些目標？</td><td>合勤烏日館（立即）、明日葉（預簽約）</td></tr>
+  <tr><td>可行性驗證</td><td>會遇到哪些問題？</td><td>法規、客戶阻力、處方整合、規模化</td></tr>
+  <tr><td>財務驗證</td><td>成本與獲利如何？</td><td>啟動8–18萬，50戶獲利轉折，430戶年收逾500萬</td></tr>
+</table>
+
+<hr>
+
+<!-- 下一步行動 -->
+<h2>建議下一步</h2>
+<div class="box box-green">
+  <ol style="margin-left:16px;">
+    <li style="margin-bottom:8px;"><strong>法規確認</strong>：諮詢藥師公會或熟悉藥事法的律師，確認服務邊界與衛星藥局設立需求</li>
+    <li style="margin-bottom:8px;"><strong>拜訪合勤烏日館</strong>：以「藥事管理顧問」身份提案，談試點合作，電話：04-2338-0002</li>
+    <li style="margin-bottom:8px;"><strong>接觸明日葉</strong>：2027年開幕前談預簽約，電話：(04)2236-7985</li>
+    <li style="margin-bottom:8px;"><strong>找合作藥師</strong>：具長照藥師資格，兼職合作為優先</li>
+    <li><strong>系統評估</strong>：評估現成用藥管理SaaS或客製開發需求</li>
+  </ol>
+</div>
+
+<div class="footer">
+  <p>本文件由 Claude Code AI 協助整理 ｜ Benjamin Wang ｜ 2026-05-04</p>
+</div>
+
+</body>
+</html>

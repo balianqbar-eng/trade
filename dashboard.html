@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>股票戰情儀表板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    .up   { color: #ef4444; }
+    .down { color: #22c55e; }
+    .flat { color: #94a3b8; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; }
+    .tab-btn { padding: 8px 18px; border-radius: 8px; cursor: pointer; color: #94a3b8; transition: all .2s; white-space: nowrap; }
+    .tab-btn.active { background: #3b82f6; color: #fff; }
+    .tab-btn:not(.active):hover { background: #334155; color: #e2e8f0; }
+    .kline-btn { padding: 5px 14px; border-radius: 6px; cursor: pointer; color: #94a3b8; transition: all .2s; border: 1px solid #334155; font-size: 0.875rem; }
+    .kline-btn.active { background: #334155; color: #e2e8f0; border-color: #475569; }
+    .kline-btn:not(.active):hover { background: #1e293b; color: #e2e8f0; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Top Bar -->
+  <div class="flex flex-wrap items-center gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-700">
+    <span class="text-blue-400 font-bold text-base sm:text-lg whitespace-nowrap">⚡ 戰情儀表板</span>
+    <div class="flex gap-2 flex-1 min-w-0 relative order-3 sm:order-none w-full sm:w-auto sm:max-w-sm">
+      <div class="relative flex-1">
+        <input id="tickerInput" type="text" placeholder="股票代號（如 2330）"
+          class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-base"
+          onkeydown="if(event.key==='Enter') search()"
+          oninput="_filterTickerHistory(this.value)"
+          onfocus="_showTickerHistory()"
+          onblur="setTimeout(_hideTickerHistory, 150)">
+        <div id="tickerDropdown" class="hidden absolute z-50 top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+        </div>
+      </div>
+      <button onclick="search()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition">查詢</button>
+      <span id="stockName" class="text-slate-300 text-sm whitespace-nowrap"></span>
+    </div>
+    <div class="ml-auto flex items-center gap-2 sm:gap-3">
+      <select id="providerSelect" onchange="switchProvider(this.value)"
+        class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 cursor-pointer">
+        <option value="shioaji">永豐</option>
+        <option value="xq">XQ</option>
+      </select>
+      <button id="loginBtn" onclick="doLogin()"
+        class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-1.5 rounded-lg transition hidden">登入</button>
+      <span id="serverStatus" class="text-xs text-slate-500"></span>
+    </div>
+  </div>
+
+  <div class="p-3 sm:p-6">
+    <!-- Quote Card -->
+    <div id="quoteCard" class="card mb-4 hidden">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span id="sName" class="text-xl font-bold"></span>
+            <span id="sTicker" class="text-slate-400 text-sm"></span>
+          </div>
+          <div class="flex items-baseline gap-3">
+            <span id="sPrice" class="text-3xl sm:text-5xl font-bold"></span>
+            <span id="sChange" class="text-lg font-medium"></span>
+          </div>
+        </div>
+        <div class="text-sm text-slate-400 space-y-1 text-right">
+          <div>開盤 <span id="sOpen" class="text-white ml-1"></span></div>
+          <div>最高 <span id="sHigh" class="text-red-400 ml-1"></span></div>
+          <div>最低 <span id="sLow" class="text-green-400 ml-1"></span></div>
+          <div>成交量 <span id="sVol" class="text-white ml-1"></span> 張</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order Panel -->
+    <div id="orderPanel" class="card mb-4 hidden">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-xs text-slate-400 uppercase tracking-wider whitespace-nowrap">快速下單</span>
+        <div class="flex rounded-lg overflow-hidden border border-slate-600 text-sm">
+          <button id="oBuyBtn"  onclick="setOAction('buy')"
+            class="px-4 py-1.5 font-medium bg-red-600 text-white transition">買進</button>
+          <button id="oSellBtn" onclick="setOAction('sell')"
+            class="px-4 py-1.5 font-medium text-slate-400 transition">賣出</button>
+        </div>
+        <div class="flex items-center gap-1">
+          <input id="oQty" type="number" min="1" value="1"
+            class="w-16 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm text-right">
+          <span class="text-xs text-slate-400">張</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-xs text-slate-400">@</span>
+          <input id="oPrice" type="number" step="0.5"
+            class="w-24 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm text-right">
+        </div>
+        <div id="oAutoTag" class="hidden px-2 py-1 rounded text-xs font-medium"
+             style="background:rgba(52,211,153,.15);border:1px solid #34d399;color:#34d399">自動模式</div>
+        <div class="ml-auto flex items-center gap-2">
+          <div class="flex rounded-lg overflow-hidden border border-slate-600 text-xs">
+            <button id="oSimBtn"  onclick="setOrderMode(true)"
+              class="px-3 py-1.5 font-medium bg-slate-600 text-white transition">模擬單</button>
+            <button id="oRealBtn" onclick="setOrderMode(false)"
+              class="px-3 py-1.5 font-medium text-slate-400 transition">實際單</button>
+          </div>
+          <button onclick="submitOrder()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-1.5 rounded-lg text-sm font-medium transition">
+            下單
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CDP Card -->
+    <div id="cdpCard" class="card mb-4 hidden">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs text-slate-400 uppercase tracking-wider">CDP 開盤策略</div>
+        <div class="flex items-center gap-2">
+          <span id="cdpRefDate" class="text-xs text-slate-500"></span>
+          <button onclick="loadCDP(currentTicker)" class="text-xs text-slate-400 hover:text-white transition px-2 py-0.5 rounded border border-slate-600">重整</button>
+        </div>
+      </div>
+      <div id="cdpLevels" class="mb-3 font-mono text-sm"></div>
+      <div id="cdpJudgment" class="hidden rounded-lg p-3">
+        <div class="flex items-center gap-3 mb-2">
+          <span id="cdpBadge" class="text-sm font-bold px-3 py-1 rounded-lg"></span>
+          <span id="cdpScenario" class="text-sm font-semibold text-white"></span>
+        </div>
+        <div class="text-sm text-slate-300 mb-1"><span class="text-slate-400">策略：</span><span id="cdpStrategy"></span></div>
+        <div class="text-sm mb-1"><span class="text-slate-400">停損：</span><span id="cdpStopLoss" class="text-red-400"></span></div>
+        <div class="text-sm"><span class="text-slate-400">目標：</span><span id="cdpTarget" class="text-emerald-400"></span></div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div id="mainContent" class="hidden">
+      <div class="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none" style="-webkit-overflow-scrolling:touch;scrollbar-width:none">
+        <button class="tab-btn active" onclick="showTab('fundamental',this)">基本面</button>
+        <button class="tab-btn" onclick="showTab('chip',this)">籌碼面</button>
+        <button class="tab-btn" onclick="showTab('technical',this)">技術面</button>
+        <button class="tab-btn" onclick="showTab('kline',this)">K線</button>
+        <button class="tab-btn" onclick="showTab('strategy',this)">策略</button>
+        <button class="tab-btn" onclick="showTab('pnl',this)">損益</button>
+        <button class="tab-btn" onclick="showTab('news',this)">消息面</button>
+      </div>
+
+      <!-- 基本面 -->
+      <div id="tab-fundamental" class="card">
+        <div class="text-xs text-slate-400 mb-4 uppercase tracking-wider">估值指標</div>
+        <div class="grid grid-cols-3 gap-6 text-center">
+          <div><div id="fPE"    class="text-3xl font-bold mb-1">—</div><div class="text-xs text-slate-400">本益比 P/E</div></div>
+          <div><div id="fPB"    class="text-3xl font-bold mb-1">—</div><div class="text-xs text-slate-400">股價淨值比 P/B</div></div>
+          <div><div id="fYield" class="text-3xl font-bold mb-1">—</div><div class="text-xs text-slate-400">殖利率</div></div>
+        </div>
+      </div>
+
+      <!-- 籌碼面 -->
+      <div id="tab-chip" class="card hidden">
+        <div class="text-xs text-slate-400 mb-4 uppercase tracking-wider">三大法人今日買賣超（千股）</div>
+        <div class="space-y-4">
+          <div class="flex justify-between items-center py-2 border-b border-slate-700">
+            <span class="text-slate-300">外資及陸資</span>
+            <span id="cForeign" class="text-2xl font-bold">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-slate-700">
+            <span class="text-slate-300">投信</span>
+            <span id="cTrust" class="text-2xl font-bold">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-slate-700">
+            <span class="text-slate-300">自營商</span>
+            <span id="cDealer" class="text-2xl font-bold">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2">
+            <span class="font-semibold">合計</span>
+            <span id="cTotal" class="text-2xl font-bold">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 技術面 -->
+      <div id="tab-technical" class="card hidden">
+        <div class="text-xs text-slate-400 mb-4 uppercase tracking-wider">技術指標</div>
+        <div class="grid grid-cols-2 gap-8">
+          <div>
+            <div class="text-sm text-slate-400 mb-3">均線</div>
+            <div id="maRows" class="space-y-3"></div>
+          </div>
+          <div>
+            <div class="text-sm text-slate-400 mb-3">RSI（14）</div>
+            <div id="rsiVal" class="text-3xl font-bold mb-3"></div>
+            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div id="rsiBar" class="h-full rounded-full transition-all duration-500"></div>
+            </div>
+            <div class="flex justify-between text-xs text-slate-500 mt-1">
+              <span>超賣 30</span><span>超買 70</span>
+            </div>
+          </div>
+          <div class="col-span-2">
+            <div class="text-sm text-slate-400 mb-3">MACD（12, 26, 9）</div>
+            <div class="grid grid-cols-3 gap-4 text-center">
+              <div><div id="tMacd"   class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MACD</div></div>
+              <div><div id="tSignal" class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Signal</div></div>
+              <div><div id="tHist"   class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 損益 -->
+      <div id="tab-pnl" class="card hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-xs text-slate-400 uppercase tracking-wider">持倉損益</div>
+          <button onclick="loadPositions()" class="text-xs text-slate-400 hover:text-white transition px-3 py-1 rounded border border-slate-600">重整</button>
+        </div>
+        <div id="pnlContent"><div class="text-slate-500 text-sm text-center py-8">點「重整」或切換此 tab 自動載入</div></div>
+      </div>
+
+      <!-- K線 -->
+      <div id="tab-kline" class="card hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <button class="kline-btn active" onclick="switchKline(1,this)">1分</button>
+          <button class="kline-btn" onclick="switchKline(5,this)">5分</button>
+          <button class="kline-btn" onclick="switchKline(60,this)">60分</button>
+          <div id="bigvolInfo" class="ml-4 text-xs text-slate-400"></div>
+          <span id="klineStatus" class="ml-auto text-xs text-slate-500"></span>
+        </div>
+        <div id="signalBadge" class="hidden mb-3 px-3 py-2 rounded-lg text-sm font-semibold"
+             style="background:rgba(239,68,68,.15);border:1px solid #ef4444;color:#ef4444">
+          進場訊號：K &lt; 20 且 J &lt; 0 — 已記錄至 signals.csv
+        </div>
+        <div id="indGrid" class="hidden">
+          <!-- 當根 K 棒 -->
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">當根 K 棒</div>
+          <div class="grid grid-cols-4 gap-4 text-center mb-5">
+            <div><div id="iOpen"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">開盤</div></div>
+            <div><div id="iHigh"  class="text-2xl font-bold text-red-400">—</div><div class="text-xs text-slate-400 mt-1">最高</div></div>
+            <div><div id="iLow"   class="text-2xl font-bold text-green-400">—</div><div class="text-xs text-slate-400 mt-1">最低</div></div>
+            <div><div id="iClose" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">收盤</div></div>
+          </div>
+          <!-- KD -->
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">KD（9,3,3）</div>
+          <div class="grid grid-cols-3 gap-4 text-center mb-5">
+            <div><div id="iK" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">K</div></div>
+            <div><div id="iD" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">D</div></div>
+            <div><div id="iJ" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">J</div></div>
+          </div>
+          <!-- MACD -->
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">MACD（12,26,9）</div>
+          <div class="grid grid-cols-3 gap-4 text-center mb-5">
+            <div><div id="iMacd" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MACD</div></div>
+            <div><div id="iSig"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Signal</div></div>
+            <div><div id="iHist" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
+          </div>
+          <!-- 大戶大單 -->
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">大戶大單（≥50張）</div>
+          <div class="grid grid-cols-2 gap-4 text-center">
+            <div><div id="iBigLots"   class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">累計張數</div></div>
+            <div><div id="iBigTrades" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">筆數</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 策略（3分K當沖）-->
+      <div id="tab-strategy" class="card hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider">3分K當沖策略</div>
+            <div class="text-xs text-slate-500 mt-1">MA(5,13,50) · MACD(6,13,5) · KDJ(9,3,3)</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="stratIntervalBtns" class="flex gap-1">
+              <button class="kline-btn active" onclick="setStratInterval(3,this)">3分</button>
+              <button class="kline-btn" onclick="setStratInterval(5,this)">5分</button>
+            </div>
+            <button onclick="if(currentTicker)loadStrategy(currentTicker)"
+              class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重整</button>
+          </div>
+        </div>
+        <div id="stratSignal" class="text-center py-4 mb-4 rounded-xl" style="background:#0f172a">
+          <div class="text-4xl font-bold text-slate-500">—</div>
+          <div class="text-xs text-slate-500 mt-1">切換至此 tab 或按重整載入</div>
+        </div>
+        <div id="stratInd" class="hidden mb-4">
+          <div class="grid grid-cols-4 gap-3 text-center mb-3">
+            <div><div id="stClose" class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">收盤</div></div>
+            <div><div id="stMA5"   class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MA5</div></div>
+            <div><div id="stMA13"  class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MA13</div></div>
+            <div><div id="stMA50"  class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MA50</div></div>
+          </div>
+          <div class="grid grid-cols-5 gap-3 text-center">
+            <div><div id="stK"    class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">K</div></div>
+            <div><div id="stD"    class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">D</div></div>
+            <div><div id="stJ"    class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">J</div></div>
+            <div><div id="stMacd" class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MACD</div></div>
+            <div><div id="stHist" class="text-xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
+          </div>
+        </div>
+        <div id="stratConds" class="hidden">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-2">做多條件</div>
+              <div id="condLong" class="space-y-1.5"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-2">做空條件</div>
+              <div id="condShort" class="space-y-1.5"></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-2">多單出場訊號</div>
+              <div id="condExitLong" class="space-y-1.5"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-2">空單出場訊號</div>
+              <div id="condExitShort" class="space-y-1.5"></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-5 pt-4 border-t border-slate-700">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-slate-400">張數</span>
+            <input id="stratQty" type="number" min="1" value="1"
+              class="w-14 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-center">
+          </div>
+          <div id="stratAutoStatus" class="text-xs text-slate-500 flex-1"></div>
+          <button onclick="startStratAutoTrade()"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-1.5 rounded-lg text-sm font-medium transition">執行</button>
+          <button onclick="stopStratAutoTrade()"
+            class="bg-red-700 hover:bg-red-800 text-white px-5 py-1.5 rounded-lg text-sm font-medium transition">關閉</button>
+        </div>
+        <div class="flex justify-end items-center gap-3 mt-2">
+          <span id="stratCountdown" class="text-xs text-slate-600 font-mono"></span>
+          <span id="stratStatus" class="text-xs text-slate-600"></span>
+        </div>
+
+        <!-- 歷史訊號紀錄 -->
+        <div class="mt-4 pt-4 border-t border-slate-700">
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">歷史訊號紀錄</div>
+          <div id="signalHistory" class="overflow-x-auto">
+            <div class="text-slate-500 text-xs">載入中…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 消息面 -->
+      <div id="tab-news" class="hidden rounded-xl overflow-hidden" style="height:600px">
+        <iframe id="newsFrame" class="w-full h-full border-0" src="about:blank"></iframe>
+      </div>
+    </div>
+
+    <div id="loading" class="hidden text-center py-16 text-slate-400 text-lg">載入中…</div>
+    <div id="timingInfo" class="hidden text-center text-xs text-slate-500 font-mono pb-3 -mt-2"></div>
+    <div id="errMsg"  class="hidden card text-center py-10 text-orange-400"></div>
+
+    <!-- XQ 自選面板 -->
+    <div class="card mt-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-slate-200">XQ 自選</span>
+          <select id="watchlistGroupSelect" onchange="loadWatchlist(this.value)"
+            class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer">
+            <option value="">— 選擇商品組合 —</option>
+          </select>
+          <span id="watchlistCount" class="text-xs bg-slate-700 text-slate-400 px-2 py-0.5 rounded-full">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="watchlistStatus" class="text-xs text-slate-500">尚未連線</span>
+          <button onclick="loadWatchlistGroups()"
+            class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重新整理</button>
+        </div>
+      </div>
+      <div id="watchlistGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div class="text-slate-600 text-xs col-span-full text-center py-3">連線 XQ 後選擇商品組合載入清單</div>
+      </div>
+    </div>
+
+    <!-- 多股監控面板 -->
+    <div class="card mt-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-semibold text-slate-200">多股監控</span>
+        <div class="flex items-center gap-3">
+          <span id="atStatusBadge" class="text-xs text-slate-500"></span>
+          <button onclick="stopAllMonitors()"
+            class="bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded text-xs">全部停止</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2" id="monitorGrid"></div>
+
+      <!-- 母頁：點選子格後顯示詳細策略 -->
+      <div id="monitorDetail" class="hidden mt-3 pt-3 border-t border-slate-700">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <span class="font-semibold text-slate-200" id="msDetailTicker">—</span>
+            <span class="text-xs text-slate-500 ml-2">3分K當沖策略</span>
+          </div>
+          <button onclick="_msRefresh()"
+            class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重整</button>
+        </div>
+        <div id="msStratSignal" class="rounded-xl py-3 mb-3 text-center" style="background:#0f172a">
+          <div class="text-slate-500 text-sm">點選子格載入策略詳情</div>
+        </div>
+        <div id="msStratInd" class="hidden mb-3">
+          <div class="grid grid-cols-4 gap-2 text-center mb-2">
+            <div><div id="msClose" class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">收盤</div></div>
+            <div><div id="msMA5"   class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">MA5</div></div>
+            <div><div id="msMA13"  class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">MA13</div></div>
+            <div><div id="msMA50"  class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">MA50</div></div>
+          </div>
+          <div class="grid grid-cols-5 gap-2 text-center">
+            <div><div id="msK"    class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">K</div></div>
+            <div><div id="msD"    class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">D</div></div>
+            <div><div id="msJ"    class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">J</div></div>
+            <div><div id="msMacd" class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">MACD</div></div>
+            <div><div id="msHist" class="text-lg font-bold">—</div><div class="text-xs text-slate-400 mt-0.5">Histogram</div></div>
+          </div>
+        </div>
+        <div id="msStratConds" class="hidden">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-1.5">做多條件</div>
+              <div id="msCondLong" class="space-y-1"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-1.5">做空條件</div>
+              <div id="msCondShort" class="space-y-1"></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-1.5">多單出場訊號</div>
+              <div id="msCondExitLong" class="space-y-1"></div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase mb-1.5">空單出場訊號</div>
+              <div id="msCondExitShort" class="space-y-1"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="atLog" class="space-y-0.5 max-h-24 overflow-y-auto font-mono text-xs border-t border-slate-700 pt-2 mt-3 text-slate-500">無記錄</div>
+    </div>
+  </div>
+
+<script>
+const BASE = window.location.origin;
+let currentTicker = null;
+
+// ── 搜尋歷史下拉 ──────────────────────────────────────────
+function _getTickerHistory() {
+  try { return JSON.parse(localStorage.getItem('tickerHistory') || '[]'); } catch { return []; }
+}
+function _saveTickerHistory(ticker) {
+  let h = _getTickerHistory().filter(t => t !== ticker);
+  h.unshift(ticker);
+  if (h.length > 10) h = h.slice(0, 10);
+  localStorage.setItem('tickerHistory', JSON.stringify(h));
+}
+function _renderTickerDropdown(list) {
+  const dd = document.getElementById('tickerDropdown');
+  if (!list.length) { dd.classList.add('hidden'); return; }
+  dd.innerHTML = list.map(t =>
+    `<div class="px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer font-mono"
+      onmousedown="document.getElementById('tickerInput').value='${t}';search()">${t}</div>`
+  ).join('');
+  dd.classList.remove('hidden');
+}
+function _showTickerHistory() { _renderTickerDropdown(_getTickerHistory()); }
+function _hideTickerHistory() { document.getElementById('tickerDropdown').classList.add('hidden'); }
+function _filterTickerHistory(val) {
+  const h = _getTickerHistory();
+  const filtered = val ? h.filter(t => t.startsWith(val.toUpperCase())) : h;
+  _renderTickerDropdown(filtered);
+}
+let currentKlineInterval = 1;
+let _oAction = 'buy';
+let _oSimulation = true;
+let _smartAuto = false;
+let _pendingOrder = null;
+
+function updateStatus(d) {
+  document.getElementById('providerSelect').value = d.provider;
+  const needLogin = d.provider === 'shioaji' && !d.connected;
+  document.getElementById('loginBtn').classList.toggle('hidden', !needLogin);
+  document.getElementById('serverStatus').textContent =
+    d.connected ? '已連線' : (needLogin ? '未登入' : '⚠ 資料源離線');
+}
+
+fetch(`${BASE}/health`).then(r=>r.json()).then(d => { updateStatus(d); loadWatchlistGroups(); }).catch(()=>{
+  document.getElementById('serverStatus').textContent = '⚠ 伺服器未啟動';
+});
+
+async function switchProvider(name) {
+  try {
+    const d = await fetch(`${BASE}/provider/${name}`, {method:'POST'}).then(r=>r.json());
+    updateStatus({...d, provider: name});
+  } catch(e) {
+    document.getElementById('serverStatus').textContent = '切換失敗';
+  }
+}
+
+async function doLogin() {
+  const btn = document.getElementById('loginBtn');
+  const status = document.getElementById('serverStatus');
+  btn.disabled = true;
+  status.textContent = '登入中…';
+  try {
+    await fetch(`${BASE}/login`, {method:'POST'});
+    localStorage.removeItem('tickerHistory');
+    const d = await fetch(`${BASE}/health`).then(r=>r.json());
+    updateStatus(d);
+  } catch(e) {
+    status.textContent = '登入失敗';
+    btn.disabled = false;
+  }
+}
+
+let _stratRefreshTimer = null;
+let _stratCountdown = 0;
+
+function _startStratRefresh() {
+  _stopStratRefresh();
+  _stratCountdown = 30;
+  _updateStratCountdown();
+  _stratRefreshTimer = setInterval(() => {
+    _stratCountdown--;
+    _updateStratCountdown();
+    if (_stratCountdown <= 0) {
+      _stratCountdown = 30;
+      if (currentTicker) loadStrategy(currentTicker);
+    }
+  }, 1000);
+}
+
+function _stopStratRefresh() {
+  if (_stratRefreshTimer) { clearInterval(_stratRefreshTimer); _stratRefreshTimer = null; }
+  const el = document.getElementById('stratCountdown');
+  if (el) el.textContent = '';
+}
+
+function _updateStratCountdown() {
+  const el = document.getElementById('stratCountdown');
+  if (el) el.textContent = `${_stratCountdown}s 後更新`;
+}
+
+function showTab(name, btn) {
+  ['fundamental','chip','technical','kline','strategy','pnl','news'].forEach(t=>
+    document.getElementById(`tab-${t}`).classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.remove('hidden');
+  btn.classList.add('active');
+  if (name === 'kline' && currentTicker) loadIntraday(currentTicker, currentKlineInterval);
+  if (name === 'strategy' && currentTicker) { loadStrategy(currentTicker); _startStratRefresh(); }
+  else _stopStratRefresh();
+  if (name === 'pnl') loadPositions();
+}
+
+async function search() {
+  const raw = document.getElementById('tickerInput').value.trim();
+  const t = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).toUpperCase();
+  if (!t) return;
+  _saveTickerHistory(t);
+  _hideTickerHistory();
+
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('timingInfo').classList.add('hidden');
+  document.getElementById('quoteCard').classList.add('hidden');
+  document.getElementById('cdpCard').classList.add('hidden');
+  document.getElementById('mainContent').classList.add('hidden');
+  document.getElementById('errMsg').classList.add('hidden');
+  document.getElementById('stockName').textContent = '';
+
+  const ms = {};
+  const timed = (label, p) => { const t0 = performance.now(); return p.then(v => { ms[label] = Math.round(performance.now() - t0); return v; }).catch(e => { ms[label] = Math.round(performance.now() - t0); throw e; }); };
+
+  const t0 = performance.now();
+  try {
+    const [q, tech, fund, chip] = await Promise.all([
+      timed('報價',   fetch(`${BASE}/quote/${t}`).then(r=>{ if(!r.ok) throw r; return r.json(); })),
+      timed('技術指標', fetch(`${BASE}/technical/${t}`).then(r=>r.json()).catch(()=>null)),
+      timed('基本面', fetch(`${BASE}/fundamental/${t}`).then(r=>r.json()).catch(()=>null)),
+      timed('籌碼',   fetch(`${BASE}/chip/${t}`).then(r=>r.json()).catch(()=>null)),
+    ]);
+    const total = Math.round(performance.now() - t0);
+    const parts = Object.entries(ms).map(([k,v]) => `${k} ${v}ms`).join('  |  ');
+    const el = document.getElementById('timingInfo');
+    el.textContent = `${parts}  ||  總計 ${total}ms`;
+    el.classList.remove('hidden');
+
+    renderQuote(q);
+    if (tech) renderTechnical(tech);
+    if (fund) renderFundamental(fund);
+    if (chip) renderChip(chip);
+
+    currentTicker = t;
+    const name = q.name || t;
+    document.getElementById('stockName').textContent = (name && name !== t) ? name : '';
+    document.getElementById('newsFrame').src =
+      `https://tw.news.yahoo.com/search?p=${encodeURIComponent(name + ' ' + t)}`;
+
+    document.getElementById('quoteCard').classList.remove('hidden');
+    document.getElementById('mainContent').classList.remove('hidden');
+    loadCDP(t);
+  } catch(e) {
+    let msg;
+    if (e instanceof Response) {
+      msg = e.status === 404 ? '無此股票代碼' : '伺服器錯誤，請確認服務已啟動';
+    } else if (e instanceof TypeError || e instanceof Error) {
+      msg = `資料顯示錯誤：${e.message}`;
+    } else {
+      msg = '伺服器連線失敗，請確認服務已啟動';
+    }
+    document.getElementById('errMsg').textContent = msg;
+    document.getElementById('errMsg').classList.remove('hidden');
+  }
+
+  document.getElementById('loading').classList.add('hidden');
+}
+
+function colorClass(v) { return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
+function fmtNet(v) {
+  const cls = colorClass(v);
+  const sign = v > 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${Math.round(v).toLocaleString()}</span>`;
+}
+
+function renderQuote(q) {
+  const fmt = (v, d=2) => (v != null && !isNaN(v)) ? Number(v).toFixed(d) : '—';
+  const cls = colorClass(q.changePct);
+  document.getElementById('sName').textContent = q.name || q.ticker;
+  document.getElementById('sTicker').textContent = q.ticker;
+  document.getElementById('sPrice').className = `text-3xl sm:text-5xl font-bold ${cls}`;
+  document.getElementById('sPrice').textContent = fmt(q.close);
+  document.getElementById('sChange').className = `text-lg font-medium ${cls}`;
+  const chg = q.change ?? 0, pct = q.changePct ?? 0;
+  document.getElementById('sChange').textContent =
+    `${chg >= 0 ? '+' : ''}${fmt(chg)}（${fmt(pct)}%）`;
+  document.getElementById('sOpen').textContent = fmt(q.open);
+  document.getElementById('sHigh').textContent = fmt(q.high);
+  document.getElementById('sLow').textContent  = fmt(q.low);
+  document.getElementById('sVol').textContent  = q.volume != null ? Math.floor(q.volume / 1000).toLocaleString() : '—';
+  if (q.close != null) document.getElementById('oPrice').value = fmt(q.close);
+  document.getElementById('orderPanel').classList.remove('hidden');
+}
+
+function renderFundamental(f) {
+  document.getElementById('fPE').textContent    = f.pe    ? `${f.pe.toFixed(2)}x`    : '—';
+  document.getElementById('fPB').textContent    = f.pb    ? `${f.pb.toFixed(2)}x`    : '—';
+  document.getElementById('fYield').textContent = f.dividendYield ? `${f.dividendYield.toFixed(2)}%` : '—';
+}
+
+function renderChip(c) {
+  document.getElementById('cForeign').innerHTML = fmtNet(c.foreignNet);
+  document.getElementById('cTrust').innerHTML   = fmtNet(c.investTrustNet);
+  document.getElementById('cDealer').innerHTML  = fmtNet(c.dealerNet);
+  document.getElementById('cTotal').innerHTML   = fmtNet(c.total);
+}
+
+async function loadCDP(ticker) {
+  if (!ticker) return;
+  try {
+    const d = await fetch(`${BASE}/cdp/${ticker}`).then(r => r.json());
+    renderCDP(d);
+    document.getElementById('cdpCard').classList.remove('hidden');
+  } catch(e) {
+    document.getElementById('cdpCard').classList.add('hidden');
+  }
+}
+
+function renderCDP(d) {
+  document.getElementById('cdpRefDate').textContent = d.ref_date ? `參考日：${d.ref_date}` : '';
+
+  const LEVELS = [
+    { key: 'ah',  label: 'AH', name: '遠高', color: '#ef4444' },
+    { key: 'nh',  label: 'NH', name: '近高', color: '#f97316' },
+    { key: 'cdp', label: 'CDP', name: '中樞', color: '#60a5fa' },
+    { key: 'nl',  label: 'NL', name: '近低', color: '#2dd4bf' },
+    { key: 'al',  label: 'AL', name: '遠低', color: '#22c55e' },
+  ];
+
+  const op = d.open_price;
+  const rows = [];
+
+  if (op && op > d.ah) {
+    rows.push(`<div class="flex items-center gap-2 py-0.5 px-2 rounded" style="background:rgba(250,204,21,.12)">
+      <span class="w-8 text-right text-yellow-300 font-bold">▶</span>
+      <span class="w-8 text-xs text-slate-400">開盤</span>
+      <span class="w-20 text-right text-yellow-300 font-bold">${op.toFixed(2)}</span>
+    </div>`);
+  }
+
+  for (let i = 0; i < LEVELS.length; i++) {
+    const lv = LEVELS[i];
+    const val = d[lv.key];
+    rows.push(`<div class="flex items-center gap-2 py-0.5">
+      <span class="w-8 text-right font-bold text-xs" style="color:${lv.color}">${lv.label}</span>
+      <span class="w-8 text-xs text-slate-500">${lv.name}</span>
+      <span class="w-20 text-right text-white">${val != null ? val.toFixed(2) : '—'}</span>
+    </div>`);
+
+    const nextVal = LEVELS[i + 1] ? d[LEVELS[i + 1].key] : null;
+    if (op && val != null && nextVal != null && op <= val && op >= nextVal) {
+      rows.push(`<div class="flex items-center gap-2 py-0.5 px-2 rounded" style="background:rgba(250,204,21,.12)">
+        <span class="w-8 text-right text-yellow-300 font-bold">▶</span>
+        <span class="w-8 text-xs text-slate-400">開盤</span>
+        <span class="w-20 text-right text-yellow-300 font-bold">${op.toFixed(2)}</span>
+      </div>`);
+    }
+  }
+
+  if (op && op < d.al) {
+    rows.push(`<div class="flex items-center gap-2 py-0.5 px-2 rounded" style="background:rgba(250,204,21,.12)">
+      <span class="w-8 text-right text-yellow-300 font-bold">▶</span>
+      <span class="w-8 text-xs text-slate-400">開盤</span>
+      <span class="w-20 text-right text-yellow-300 font-bold">${op.toFixed(2)}</span>
+    </div>`);
+  }
+
+  document.getElementById('cdpLevels').innerHTML = rows.join('');
+
+  const jDiv = document.getElementById('cdpJudgment');
+  if (d.judgment) {
+    const j = d.judgment;
+    const isLong = j.direction === '多';
+    jDiv.style.cssText = `background:${isLong ? 'rgba(239,68,68,.1)' : 'rgba(34,197,94,.1)'};border:1px solid ${isLong ? '#ef4444' : '#22c55e'}`;
+    const badge = document.getElementById('cdpBadge');
+    badge.textContent = `${j.strength}${j.direction}`;
+    badge.style.cssText = `background:${isLong ? 'rgba(239,68,68,.25)' : 'rgba(34,197,94,.25)'};color:${isLong ? '#ef4444' : '#22c55e'}`;
+    document.getElementById('cdpScenario').textContent = j.scenario;
+    document.getElementById('cdpStrategy').textContent = j.strategy;
+    document.getElementById('cdpStopLoss').textContent = j.stop_loss;
+    document.getElementById('cdpTarget').textContent   = j.target;
+    jDiv.classList.remove('hidden');
+  } else {
+    jDiv.classList.add('hidden');
+  }
+}
+
+function switchKline(interval, btn) {
+  currentKlineInterval = interval;
+  document.querySelectorAll('.kline-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (currentTicker) loadIntraday(currentTicker, interval);
+}
+
+async function loadIntraday(ticker, interval) {
+  const status = document.getElementById('klineStatus');
+  const badge  = document.getElementById('signalBadge');
+  status.textContent = '載入中…';
+  badge.classList.add('hidden');
+  document.getElementById('indGrid').classList.add('hidden');
+
+  try {
+    const [data, vol] = await Promise.all([
+      fetch(`${BASE}/intraday/${ticker}?interval=${interval}`).then(r => { if(!r.ok) throw r; return r.json(); }),
+      fetch(`${BASE}/bigvol/${ticker}`).then(r => r.json()).catch(() => null),
+    ]);
+
+    if (!data.length) { status.textContent = '無盤中資料（非交易時間）'; return; }
+
+    const last = data[data.length - 1];
+    badge.classList.toggle('hidden', !data.some(d => d.signal));
+
+    document.getElementById('iOpen').textContent  = last.open?.toFixed(2)  ?? '—';
+    document.getElementById('iHigh').textContent  = last.high?.toFixed(2)  ?? '—';
+    document.getElementById('iLow').textContent   = last.low?.toFixed(2)   ?? '—';
+    document.getElementById('iClose').textContent = last.close?.toFixed(2) ?? '—';
+
+    document.getElementById('iK').className = `text-3xl font-bold ${last.k < 20 ? 'down' : ''}`;
+    document.getElementById('iK').textContent = last.k?.toFixed(2) ?? '—';
+    document.getElementById('iD').textContent  = last.d?.toFixed(2) ?? '—';
+    document.getElementById('iJ').className = `text-3xl font-bold ${last.j < 0 ? 'down' : ''}`;
+    document.getElementById('iJ').textContent  = last.j?.toFixed(2) ?? '—';
+
+    document.getElementById('iMacd').textContent = last.macd?.toFixed(4) ?? '—';
+    document.getElementById('iSig').textContent  = last.sig?.toFixed(4)  ?? '—';
+    document.getElementById('iHist').className   = `text-2xl font-bold ${(last.hist ?? 0) >= 0 ? 'up' : 'down'}`;
+    document.getElementById('iHist').textContent = last.hist?.toFixed(4) ?? '—';
+
+    document.getElementById('iBigLots').textContent   = vol ? vol.total_lots.toLocaleString() : '—';
+    document.getElementById('iBigTrades').textContent = vol ? vol.big_trades.toLocaleString() : '—';
+
+    document.getElementById('indGrid').classList.remove('hidden');
+    status.textContent = `${data.length} 根，最後 ${new Date(last.time * 1000).toLocaleTimeString('zh-TW')}`;
+  } catch(e) {
+    status.textContent = '載入失敗';
+  }
+}
+
+function setOAction(a) {
+  _oAction = a;
+  document.getElementById('oBuyBtn').className  = `px-4 py-1.5 font-medium transition ${a==='buy'  ? 'bg-red-600 text-white' : 'text-slate-400'}`;
+  document.getElementById('oSellBtn').className = `px-4 py-1.5 font-medium transition ${a==='sell' ? 'bg-green-600 text-white' : 'text-slate-400'}`;
+}
+
+function setOrderMode(sim) {
+  _oSimulation = sim;
+  document.getElementById('oSimBtn').className  = `px-3 py-1.5 font-medium transition ${sim  ? 'bg-slate-600 text-white' : 'text-slate-400'}`;
+  document.getElementById('oRealBtn').className = `px-3 py-1.5 font-medium transition ${!sim ? 'bg-orange-600 text-white' : 'text-slate-400'}`;
+}
+
+function updateSmPrices() {
+  if (!_pendingOrder) return;
+  const p  = _pendingOrder.price;
+  const sl = parseFloat(document.getElementById('smSL').value) || 5;
+  const tp = parseFloat(document.getElementById('smTP').value) || 10;
+  document.getElementById('smSLPrice').textContent = `→ ${(p*(1-sl/100)).toFixed(2)}`;
+  document.getElementById('smTPPrice').textContent = `→ ${(p*(1+tp/100)).toFixed(2)}`;
+}
+
+async function submitOrder() {
+  if (!currentTicker) return;
+  const price = parseFloat(document.getElementById('oPrice').value);
+  const qty   = parseInt(document.getElementById('oQty').value);
+  if (!price || qty < 1) { _showToast('請填寫價格與張數', false); return; }
+  _pendingOrder = { ticker: currentTicker, action: _oAction, price, quantity: qty, simulation: _oSimulation };
+  if (_smartAuto) {
+    await _execOrder(true);
+  } else {
+    const name = document.getElementById('sName').textContent || currentTicker;
+    document.getElementById('smInfo').textContent =
+      `${_oAction==='buy'?'買進':'賣出'}  ${name}（${currentTicker}）  ${qty}張 @ ${price.toFixed(2)}`;
+    updateSmPrices();
+    document.getElementById('smartModal').classList.remove('hidden');
+  }
+}
+
+async function doSmartOrder(auto) {
+  document.getElementById('smartModal').classList.add('hidden');
+  if (auto) {
+    _smartAuto = true;
+    document.getElementById('oAutoTag').classList.remove('hidden');
+    const sl = parseFloat(document.getElementById('smSL').value);
+    const tp = parseFloat(document.getElementById('smTP').value);
+    await fetch(`${BASE}/smart_order/config`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ auto:true, stop_loss_pct:sl, take_profit_pct:tp }),
+    }).catch(()=>{});
+  }
+  await _execOrder(true);
+}
+
+async function skipSmartOrder() {
+  document.getElementById('smartModal').classList.add('hidden');
+  _smartAuto = false;
+  document.getElementById('oAutoTag').classList.add('hidden');
+  await fetch(`${BASE}/smart_order/config`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ auto:false }),
+  }).catch(()=>{});
+  await _execOrder(false);
+}
+
+async function _execOrder(withSmart) {
+  if (!_pendingOrder) return;
+  const body = { ..._pendingOrder, smart: withSmart };
+  if (withSmart) {
+    body.stop_loss_pct   = parseFloat(document.getElementById('smSL').value) || 5;
+    body.take_profit_pct = parseFloat(document.getElementById('smTP').value) || 10;
+  }
+  try {
+    const r = await fetch(`${BASE}/order`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    _showToast(r.ok
+      ? `${d.simulation?'【模擬】':'【實單】'}${d.action==='buy'?'買進':'賣出'} ${d.ticker} ${d.quantity}張 @ ${d.price}${d.stop_loss?`\n停損 ${d.stop_loss} / 停利 ${d.take_profit}`:''}`
+      : `下單失敗：${d.detail}`, r.ok);
+  } catch(e) {
+    _showToast('下單失敗：伺服器錯誤', false);
+  }
+  _pendingOrder = null;
+}
+
+function _showToast(msg, ok) {
+  const t = document.getElementById('orderToast');
+  t.textContent = msg;
+  t.style.color = ok ? '#86efac' : '#fca5a5';
+  t.classList.remove('hidden');
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.add('hidden'), 4000);
+}
+
+fetch(`${BASE}/smart_order/config`).then(r=>r.json()).then(d=>{
+  if (d.auto) {
+    _smartAuto = true;
+    document.getElementById('oAutoTag').classList.remove('hidden');
+    if (d.stop_loss_pct)   document.getElementById('smSL').value = d.stop_loss_pct;
+    if (d.take_profit_pct) document.getElementById('smTP').value = d.take_profit_pct;
+  }
+}).catch(()=>{});
+
+// ── 多股監控 10 格 ────────────────────────────────────────
+const SLOT_COUNT  = 10;
+const _slotTickers = new Array(SLOT_COUNT).fill('');
+let   _atPollTimer = null;
+
+function _buildMonitorGrid() {
+  const grid = document.getElementById('monitorGrid');
+  grid.innerHTML = Array.from({ length: SLOT_COUNT }, (_, i) => `
+    <div class="bg-slate-800 rounded-lg p-2 border border-slate-700 flex flex-col gap-1.5 cursor-pointer" id="mslot-${i}" onclick="slotSelect(${i})">
+      <div class="flex gap-1" onclick="event.stopPropagation()">
+        <input type="text" maxlength="6" placeholder="代號" id="slotTicker-${i}"
+          class="flex-1 min-w-0 bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-white text-xs text-center uppercase font-mono"
+          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
+          onkeydown="slotKeydown(${i},event)">
+        <button onclick="slotToggle(${i})" id="slotBtn-${i}"
+          class="bg-emerald-700 hover:bg-emerald-600 text-white rounded px-2 py-0.5 text-xs font-bold leading-none">▶</button>
+      </div>
+      <div class="flex gap-1 items-center">
+        <select id="slotInterval-${i}" class="flex-1 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white text-xs">
+          <option value="1">1分</option>
+          <option value="3" selected>3分</option>
+          <option value="5">5分</option>
+        </select>
+        <input type="number" min="1" value="1" id="slotQty-${i}"
+          class="w-9 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white text-xs text-center">
+        <span class="text-slate-500 text-xs">張</span>
+      </div>
+      <div class="text-center py-0.5">
+        <div id="slotName-${i}" class="text-xs text-slate-400 truncate mb-0.5">—</div>
+        <span id="slotSig-${i}" class="text-base font-bold text-slate-500">—</span>
+      </div>
+      <div class="font-mono text-xs space-y-0.5">
+        <div class="flex justify-between"><span class="text-slate-500">價</span><span id="slotPrice-${i}" class="text-slate-200">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">K/J</span><span id="slotKJ-${i}" class="text-slate-300">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Hist</span><span id="slotHist-${i}" class="text-slate-300">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">倉</span><span id="slotPos-${i}" class="text-slate-500">空手</span></div>
+        <div id="slotTime-${i}" class="text-center text-slate-600 text-xs">—</div>
+      </div>
+    </div>`).join('');
+}
+// ── XQ 自選清單 ──────────────────────────────────────────
+let _watchlist = [];
+
+function _renderWatchlist(list) {
+  const grid  = document.getElementById('watchlistGrid');
+  const count = document.getElementById('watchlistCount');
+  count.textContent = list.length;
+  if (!list.length) {
+    grid.innerHTML = '<div class="text-slate-600 text-xs col-span-full text-center py-3">此組合無個股</div>';
+    return;
+  }
+  grid.innerHTML = list.map(item => {
+    const ticker = item.ticker || item;
+    const name   = item.name   || ticker;
+    return `
+    <div class="bg-slate-900 rounded-lg px-3 py-2 flex items-center justify-between gap-2 border border-slate-700 hover:border-slate-500 transition">
+      <button onclick="watchlistQuery('${ticker}')" class="flex items-center gap-2 flex-1 min-w-0 text-left">
+        <span class="text-xs font-mono text-slate-400 shrink-0">${ticker}</span>
+        <span class="text-sm text-slate-200 truncate">${name}</span>
+      </button>
+      <button onclick="watchlistAddMonitor('${ticker}')"
+        class="shrink-0 text-xs bg-emerald-800 hover:bg-emerald-700 text-emerald-300 px-2 py-0.5 rounded transition whitespace-nowrap">
+        + 監控
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function watchlistQuery(ticker) {
+  document.getElementById('tickerInput').value = ticker;
+  search();
+}
+
+function watchlistAddMonitor(ticker) {
+  const i = _slotTickers.indexOf('');
+  if (i === -1) { _showToast('監控格位已滿（最多10個）', false); return; }
+  document.getElementById(`slotTicker-${i}`).value = ticker;
+  slotStart(i, ticker);
+}
+
+async function loadWatchlistGroups() {
+  const statusEl = document.getElementById('watchlistStatus');
+  const sel      = document.getElementById('watchlistGroupSelect');
+  statusEl.textContent = '載入中…';
+  try {
+    const groups = await fetch(`${BASE}/xq/watchlists`).then(r => {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    });
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— 選擇商品組合 —</option>' +
+      groups.map(g => `<option value="${g}"${g === prev ? ' selected' : ''}>${g}</option>`).join('');
+    statusEl.textContent = '已連線';
+    if (prev && groups.includes(prev)) loadWatchlist(prev);
+    else if (groups.length) loadWatchlist(groups[0]);
+  } catch(e) {
+    statusEl.textContent = '尚未連線';
+  }
+}
+
+async function loadWatchlist(group) {
+  if (!group) return;
+  const statusEl = document.getElementById('watchlistStatus');
+  statusEl.textContent = '載入中…';
+  try {
+    const data = await fetch(`${BASE}/xq/watchlist?group=${encodeURIComponent(group)}`).then(r => {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    });
+    _watchlist = data;
+    _renderWatchlist(data);
+    statusEl.textContent = `更新：${new Date().toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})}`;
+  } catch(e) {
+    statusEl.textContent = '尚未連線';
+    _renderWatchlist([]);
+  }
+}
+
+_buildMonitorGrid();
+
+let _selectedSlot = -1;
+
+function slotSelect(i) {
+  if (_selectedSlot >= 0) {
+    document.getElementById(`mslot-${_selectedSlot}`)?.classList.remove('ring-2', 'ring-blue-500');
+  }
+  _selectedSlot = i;
+  document.getElementById(`mslot-${i}`)?.classList.add('ring-2', 'ring-blue-500');
+  const t = _slotTickers[i];
+  const interval = parseInt(document.getElementById(`slotInterval-${i}`)?.value) || 3;
+  document.getElementById('msDetailTicker').textContent = t || '—';
+  document.getElementById('monitorDetail').classList.remove('hidden');
+  if (t) _loadMonitorDetail(t, interval);
+}
+
+function _msRefresh() {
+  if (_selectedSlot < 0 || !_slotTickers[_selectedSlot]) return;
+  const interval = parseInt(document.getElementById(`slotInterval-${_selectedSlot}`)?.value) || 3;
+  _loadMonitorDetail(_slotTickers[_selectedSlot], interval);
+}
+
+async function _loadMonitorDetail(ticker, interval) {
+  document.getElementById('msStratSignal').innerHTML =
+    '<div class="text-slate-500 text-center py-3">載入中…</div>';
+  document.getElementById('msStratInd').classList.add('hidden');
+  document.getElementById('msStratConds').classList.add('hidden');
+  try {
+    const d = await fetch(`${BASE}/strategy/signal/${ticker}?interval=${interval}`).then(r => {
+      if (!r.ok) throw r;
+      return r.json();
+    });
+    const sig = d.signal || 'FLAT';
+    const sigCfg = {
+      LONG:  { label: 'LONG  做多', color: '#ef4444', bg: 'rgba(239,68,68,.12)',    border: '#ef4444' },
+      SHORT: { label: 'SHORT 做空', color: '#22c55e', bg: 'rgba(34,197,94,.12)',    border: '#22c55e' },
+      FLAT:  { label: 'FLAT  觀望', color: '#64748b', bg: 'rgba(100,116,139,.1)',   border: '#334155' },
+    }[sig];
+    document.getElementById('msStratSignal').innerHTML =
+      `<div style="color:${sigCfg.color};background:${sigCfg.bg};border:1px solid ${sigCfg.border}" class="rounded-xl py-3 text-center">
+        <div class="text-2xl font-bold">${sigCfg.label}</div>
+      </div>`;
+    const ind = d.indicators || {};
+    if (Object.keys(ind).length) {
+      const c = ind.close;
+      const maCls = v => v != null ? (c >= v ? 'up' : 'down') : '';
+      document.getElementById('msClose').textContent = c?.toFixed(2) ?? '—';
+      [['msMA5','ma5'],['msMA13','ma13'],['msMA50','ma50']].forEach(([id,key]) => {
+        const el = document.getElementById(id);
+        el.className = `text-lg font-bold ${maCls(ind[key])}`;
+        el.textContent = ind[key]?.toFixed(2) ?? '—';
+      });
+      document.getElementById('msK').textContent = ind.k?.toFixed(2) ?? '—';
+      document.getElementById('msD').textContent = ind.d?.toFixed(2) ?? '—';
+      const jEl = document.getElementById('msJ');
+      jEl.className = `text-lg font-bold ${ind.j >= 100 ? 'up' : ind.j <= 0 ? 'down' : ''}`;
+      jEl.textContent = ind.j?.toFixed(2) ?? '—';
+      const macdEl = document.getElementById('msMacd');
+      macdEl.className = `text-lg font-bold ${(ind.macd ?? 0) >= 0 ? 'up' : 'down'}`;
+      macdEl.textContent = ind.macd?.toFixed(4) ?? '—';
+      const histEl = document.getElementById('msHist');
+      histEl.className = `text-lg font-bold ${(ind.hist ?? 0) >= 0 ? 'up' : 'down'}`;
+      histEl.textContent = ind.hist?.toFixed(4) ?? '—';
+      document.getElementById('msStratInd').classList.remove('hidden');
+    }
+    const cl = d.conditions || {};
+    if (Object.keys(cl).length) {
+      document.getElementById('msCondLong').innerHTML =
+        ['long_kd','long_macd','long_hist','long_ma50'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('msCondShort').innerHTML =
+        ['short_kd','short_macd','short_hist','short_ma50'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('msCondExitLong').innerHTML =
+        ['exit_long_ma','exit_long_j'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('msCondExitShort').innerHTML =
+        ['exit_short_ma','exit_short_j'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('msStratConds').classList.remove('hidden');
+    }
+  } catch(e) {
+    document.getElementById('msStratSignal').innerHTML =
+      '<div class="text-red-400 text-center py-3">載入失敗</div>';
+  }
+}
+
+function slotKeydown(i, event) {
+  if (event.key !== 'Enter') return;
+  const raw = document.getElementById(`slotTicker-${i}`).value.trim();
+  const t = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).toUpperCase();
+  if (t) { document.getElementById(`slotTicker-${i}`).value = t; slotStart(i, t); }
+}
+
+async function slotToggle(i) {
+  const btn = document.getElementById(`slotBtn-${i}`);
+  if (btn.textContent === '■') { await slotStop(i); return; }
+  const t = document.getElementById(`slotTicker-${i}`).value.trim();
+  if (!t) { _showToast('請填入股票代號', false); return; }
+  await slotStart(i, t);
+}
+
+async function slotStart(i, ticker) {
+  const t = (ticker || '').toUpperCase();
+  if (!t) return;
+  const interval = parseInt(document.getElementById(`slotInterval-${i}`).value);
+  const qty      = parseInt(document.getElementById(`slotQty-${i}`).value) || 1;
+
+  if (_slotTickers[i] && _slotTickers[i] !== t) {
+    await fetch(`${BASE}/auto_trade/stop`, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ticker: _slotTickers[i] }) }).catch(()=>{});
+    _resetSlot(i);
+  }
+
+  const res = await fetch(`${BASE}/auto_trade/start`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ ticker: t, interval, quantity: qty }),
+  }).catch(()=>null);
+  if (!res || !res.ok) {
+    const err = await res?.json().catch(()=>({}));
+    _showToast(err?.detail || '啟動失敗', false); return;
+  }
+
+  _slotTickers[i] = t;
+  document.getElementById(`slotTicker-${i}`).value = t;
+  fetch(`${BASE}/quote/${t}`).then(r=>r.json()).then(q=>{
+    const el = document.getElementById(`slotName-${i}`);
+    if (el) el.textContent = (q.name && q.name !== t) ? q.name : t;
+  }).catch(()=>{});
+  const btn = document.getElementById(`slotBtn-${i}`);
+  btn.textContent = '■';
+  btn.className = 'bg-red-700 hover:bg-red-600 text-white rounded px-2 py-0.5 text-xs font-bold leading-none';
+  document.getElementById(`mslot-${i}`).classList.add('border-emerald-700');
+  document.getElementById(`mslot-${i}`).classList.remove('border-slate-700');
+
+  if (typeof loadStock === 'function') loadStock(t);
+  slotSelect(i);
+  _startAtPoll();
+}
+
+async function slotStop(i) {
+  const t = _slotTickers[i];
+  if (t) {
+    await fetch(`${BASE}/auto_trade/stop`, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ticker: t }) }).catch(()=>{});
+  }
+  _slotTickers[i] = '';
+  const btn = document.getElementById(`slotBtn-${i}`);
+  btn.textContent = '▶';
+  btn.className = 'bg-emerald-700 hover:bg-emerald-600 text-white rounded px-2 py-0.5 text-xs font-bold leading-none';
+  document.getElementById(`mslot-${i}`).classList.remove('border-emerald-700');
+  document.getElementById(`mslot-${i}`).classList.add('border-slate-700');
+  _resetSlot(i);
+}
+
+function _resetSlot(i) {
+  ['slotSig','slotPrice','slotKJ','slotHist','slotTime','slotName'].forEach(id => {
+    const el = document.getElementById(`${id}-${i}`);
+    if (el) { el.textContent = '—'; el.style.color = ''; }
+  });
+  const pos = document.getElementById(`slotPos-${i}`);
+  if (pos) { pos.textContent = '空手'; pos.style.color = ''; }
+}
+
+async function stopAllMonitors() {
+  await fetch(`${BASE}/auto_trade/stop`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({}) }).catch(()=>{});
+  if (_atPollTimer) { clearInterval(_atPollTimer); _atPollTimer = null; }
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    _slotTickers[i] = '';
+    const btn = document.getElementById(`slotBtn-${i}`);
+    if (btn) { btn.textContent = '▶'; btn.className = 'bg-emerald-700 hover:bg-emerald-600 text-white rounded px-2 py-0.5 text-xs font-bold leading-none'; }
+    const slot = document.getElementById(`mslot-${i}`);
+    if (slot) { slot.classList.remove('border-emerald-700'); slot.classList.add('border-slate-700'); }
+    _resetSlot(i);
+  }
+  document.getElementById('atStatusBadge').textContent = '';
+  const sas = document.getElementById('stratAutoStatus');
+  if (sas) { sas.textContent = '已停止'; sas.style.color = ''; }
+}
+
+function _startAtPoll() {
+  if (_atPollTimer) clearInterval(_atPollTimer);
+  _pollAt();
+  _atPollTimer = setInterval(_pollAt, 5000);
+}
+
+async function _pollAt() {
+  try {
+    const d = await fetch(`${BASE}/auto_trade/status`).then(r => r.json());
+    _renderMonitorSlots(d.monitors || {});
+    _renderAtLog(d.log || []);
+
+    const running = Object.keys(d.monitors || {}).filter(t => d.monitors[t].running);
+    const badge = document.getElementById('atStatusBadge');
+    badge.textContent = running.length ? `監控中：${running.join(' / ')}` : '';
+    badge.style.color  = running.length ? '#34d399' : '';
+    if (!Object.keys(d.monitors || {}).length && _atPollTimer) {
+      clearInterval(_atPollTimer); _atPollTimer = null;
+    }
+
+    if (d.pending_signal) {
+      const ps  = d.pending_signal;
+      await fetch(`${BASE}/auto_trade/clear_pending`, { method:'POST' }).catch(()=>{});
+      const qty = ((d.monitors || {})[ps.ticker] || {}).quantity || 1;
+      const psAction = ps.action || 'buy';
+      _pendingOrder = { ticker: ps.ticker, action: psAction, price: ps.price, quantity: qty };
+      if (_smartAuto) {
+        await _execOrder(true);
+      } else {
+        const sigLabel = ps.signal === 'LONG' ? '做多' : ps.signal === 'SHORT' ? '做空' : psAction === 'buy' ? '買進' : '賣出';
+        document.getElementById('smInfo').textContent =
+          `【${ps.signal || '訊號'}】${ps.ticker}  K=${ps.k ?? '-'}  J=${ps.j ?? '-'}  ${sigLabel}${qty}張 @ ${ps.price}`;
+        updateSmPrices();
+        document.getElementById('smartModal').classList.remove('hidden');
+      }
+    }
+  } catch(e) {}
+}
+
+function _renderMonitorSlots(monitors) {
+  const sigColor = { LONG: '#34d399', SHORT: '#f87171', FLAT: '#94a3b8' };
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    const t = _slotTickers[i];
+    if (!t) continue;
+    const m = monitors[t];
+    if (!m) continue;
+    const e = m.latest || {};
+
+    const sigEl = document.getElementById(`slotSig-${i}`);
+    if (sigEl) { sigEl.textContent = e.sig || '—'; sigEl.style.color = sigColor[e.sig] || '#94a3b8'; }
+
+    const priceEl = document.getElementById(`slotPrice-${i}`);
+    if (priceEl) priceEl.textContent = e.price != null ? e.price.toFixed(2) : '—';
+
+    const kjEl = document.getElementById(`slotKJ-${i}`);
+    if (kjEl) kjEl.textContent = (e.k != null && e.j != null) ? `${e.k} / ${e.j}` : '—';
+
+    const histEl = document.getElementById(`slotHist-${i}`);
+    if (histEl) { histEl.textContent = e.hist != null ? e.hist.toFixed(3) : '—'; histEl.style.color = (e.hist || 0) >= 0 ? '#34d399' : '#f87171'; }
+
+    const posEl = document.getElementById(`slotPos-${i}`);
+    if (posEl) { posEl.textContent = m.position || '空手'; posEl.style.color = m.position === 'LONG' ? '#34d399' : m.position === 'SHORT' ? '#f87171' : '#94a3b8'; }
+
+    const timeEl = document.getElementById(`slotTime-${i}`);
+    if (timeEl) timeEl.textContent = e.time ? e.time.slice(11, 16) : '—';
+
+    if (!m.running) {
+      const btn = document.getElementById(`slotBtn-${i}`);
+      if (btn && btn.textContent === '■') {
+        btn.textContent = '▶';
+        btn.className = 'bg-emerald-700 hover:bg-emerald-600 text-white rounded px-2 py-0.5 text-xs font-bold leading-none';
+        document.getElementById(`mslot-${i}`)?.classList.remove('border-emerald-700');
+        document.getElementById(`mslot-${i}`)?.classList.add('border-slate-700');
+        _slotTickers[i] = '';
+      }
+    }
+  }
+}
+
+function _renderAtLog(entries) {
+  const logEl = document.getElementById('atLog');
+  if (!logEl) return;
+  if (!entries.length) { logEl.innerHTML = '<span class="text-slate-500">無記錄</span>'; return; }
+  logEl.innerHTML = entries.map(e =>
+    `<div class="${e.signal ? 'text-amber-400 font-bold' : 'text-slate-500'}">${e.time}&nbsp;${e.ticker}&nbsp;${e.msg}</div>`
+  ).join('');
+}
+
+async function loadPositions() {
+  const el = document.getElementById('pnlContent');
+  el.innerHTML = '<div class="text-slate-500 text-sm text-center py-4">載入中…</div>';
+  try {
+    const data = await fetch(`${BASE}/positions`).then(r => r.json());
+    if (!data.length) {
+      el.innerHTML = '<div class="text-slate-500 text-sm text-center py-8">無持倉紀錄（下單後會出現）</div>';
+      return;
+    }
+    const totalPnl = data.reduce((s, p) => s + (p.pnl || 0), 0);
+    const tCls  = totalPnl >= 0 ? 'up' : 'down';
+    const tSign = totalPnl >= 0 ? '+' : '';
+    el.innerHTML = `
+      <div class="flex justify-between items-baseline mb-4 pb-3 border-b border-slate-700">
+        <span class="text-xs text-slate-400">總損益</span>
+        <span class="text-2xl font-bold ${tCls}">${tSign}${totalPnl.toLocaleString()} 元</span>
+      </div>
+      <div class="space-y-3">${data.map(_renderPos).join('')}</div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="text-orange-400 text-sm text-center py-4">載入失敗</div>';
+  }
+}
+
+function _renderPos(p) {
+  const pCls  = (p.pnl_pct ?? 0) >= 0 ? 'up' : 'down';
+  const pSign = (p.pnl_pct ?? 0) >= 0 ? '+' : '';
+  const fmt   = v => v != null ? v.toFixed(2) : '—';
+  const slDist = p.sl_dist_pct != null ? ` <span class="text-xs text-slate-500">(距${p.sl_dist_pct.toFixed(1)}%)</span>` : '';
+  const tpDist = p.tp_dist_pct != null ? ` <span class="text-xs text-slate-500">(距${p.tp_dist_pct.toFixed(1)}%)</span>` : '';
+  const badge  = p.simulated
+    ? '<span class="text-xs px-1.5 py-0.5 rounded" style="background:rgba(148,163,184,.15);color:#94a3b8">模擬</span>'
+    : '<span class="text-xs px-1.5 py-0.5 rounded" style="background:rgba(251,146,60,.15);color:#fb923c">實單</span>';
+  return `
+    <div class="rounded-xl p-4" style="background:#0f172a">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-lg">${p.ticker}</span>
+          <span class="text-xs text-slate-400">${p.qty}張</span>
+          ${badge}
+        </div>
+        <div class="text-right">
+          <div class="text-2xl font-bold ${pCls}">${p.pnl != null ? pSign + p.pnl.toLocaleString() + ' 元' : '—'}</div>
+          <div class="text-sm ${pCls}">${p.pnl_pct != null ? pSign + p.pnl_pct + '%' : '—'}</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2 text-center text-sm">
+        <div><div class="font-medium">${fmt(p.avg_cost)}</div><div class="text-xs text-slate-500 mt-0.5">均價</div></div>
+        <div><div class="font-medium text-white">${fmt(p.current_price)}</div><div class="text-xs text-slate-500 mt-0.5">現價</div></div>
+        <div><div class="text-green-400">${fmt(p.stop_loss)}${slDist}</div><div class="text-xs text-slate-500 mt-0.5">停損</div></div>
+        <div><div class="text-red-400">${fmt(p.take_profit)}${tpDist}</div><div class="text-xs text-slate-500 mt-0.5">停利</div></div>
+      </div>
+    </div>`;
+}
+
+let _stratInterval = 3;
+
+function setStratInterval(i, btn) {
+  _stratInterval = i;
+  document.querySelectorAll('#stratIntervalBtns .kline-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (currentTicker) loadStrategy(currentTicker);
+}
+
+async function stopStratAutoTrade() {
+  const t = currentTicker;
+  if (!t) return;
+  const i = _slotTickers.indexOf(t);
+  if (i !== -1) await slotStop(i);
+  const badge = document.getElementById('stratAutoStatus');
+  badge.textContent = '已停止'; badge.style.color = '';
+}
+
+async function startStratAutoTrade() {
+  const t = currentTicker;
+  if (!t) { _showToast('請先查詢股票', false); return; }
+  const qty = parseInt(document.getElementById('stratQty').value) || 1;
+
+  let i = _slotTickers.indexOf(t);
+  if (i === -1) i = _slotTickers.indexOf('');
+  if (i === -1) { _showToast('監控格位已滿（最多10個）', false); return; }
+
+  document.getElementById(`slotInterval-${i}`).value = String(_stratInterval);
+  document.getElementById(`slotQty-${i}`).value = String(qty);
+  await slotStart(i, t);
+
+  const badge = document.getElementById('stratAutoStatus');
+  badge.textContent = `監控中：${t} / 每${_stratInterval}分鐘`;
+  badge.style.color = '#34d399';
+}
+
+const _condLabels = {
+  long_kd:       'KD金叉（K<30低檔）',
+  long_macd:     'MACD(6,13,5) < 0',
+  long_hist:     '綠柱縮小或轉紅',
+  long_ma50:     '股價 ≥ MA50',
+  short_kd:      'KD死叉（K>70高檔）',
+  short_macd:    'MACD(6,13,5) > 0',
+  short_hist:    '紅柱縮小或轉綠',
+  short_ma50:    '股價 ≤ MA50',
+  exit_long_ma:  '價格跌破 MA5 或 MA13',
+  exit_long_j:   'J≥100 回落且柱縮',
+  exit_short_ma: '價格突破 MA5 或 MA13',
+  exit_short_j:  'J≤-100 回升且柱縮',
+};
+
+function _condRow(key, met) {
+  return `<div class="flex items-center gap-2 text-sm">
+    <span class="font-bold w-4 text-center ${met ? 'text-emerald-400' : 'text-slate-700'}">${met ? '✓' : '✗'}</span>
+    <span class="${met ? 'text-slate-200' : 'text-slate-500'}">${_condLabels[key]}</span>
+  </div>`;
+}
+
+async function loadStrategy(ticker) {
+  const statusEl = document.getElementById('stratStatus');
+  statusEl.textContent = '載入中…';
+  try {
+    const d = await fetch(`${BASE}/strategy/signal/${ticker}?interval=${_stratInterval}`).then(r => {
+      if (!r.ok) throw r;
+      return r.json();
+    });
+
+    const sig = d.signal || 'FLAT';
+    const sigCfg = {
+      LONG:  { label: 'LONG  做多', color: '#ef4444', bg: 'rgba(239,68,68,.12)', border: '#ef4444' },
+      SHORT: { label: 'SHORT 做空', color: '#22c55e', bg: 'rgba(34,197,94,.12)',  border: '#22c55e' },
+      FLAT:  { label: 'FLAT  觀望', color: '#64748b', bg: 'rgba(100,116,139,.1)', border: '#334155' },
+    }[sig];
+
+    document.getElementById('stratSignal').innerHTML =
+      `<div style="color:${sigCfg.color};background:${sigCfg.bg};border:1px solid ${sigCfg.border}" class="rounded-xl py-4 text-center">
+        <div class="text-3xl font-bold">${sigCfg.label}</div>
+      </div>`;
+
+    const ind = d.indicators || {};
+    if (Object.keys(ind).length) {
+      const c = ind.close;
+      const maCls = v => v != null ? (c >= v ? 'up' : 'down') : '';
+      document.getElementById('stClose').textContent = c?.toFixed(2) ?? '—';
+      ['stMA5','stMA13','stMA50'].forEach((id, i) => {
+        const key = ['ma5','ma13','ma50'][i];
+        const el = document.getElementById(id);
+        el.className = `text-xl font-bold ${maCls(ind[key])}`;
+        el.textContent = ind[key]?.toFixed(2) ?? '—';
+      });
+      document.getElementById('stK').textContent = ind.k?.toFixed(2) ?? '—';
+      document.getElementById('stD').textContent = ind.d?.toFixed(2) ?? '—';
+      const jEl = document.getElementById('stJ');
+      jEl.className = `text-xl font-bold ${ind.j >= 100 ? 'up' : ind.j <= 0 ? 'down' : ''}`;
+      jEl.textContent = ind.j?.toFixed(2) ?? '—';
+      const macdEl = document.getElementById('stMacd');
+      macdEl.className = `text-xl font-bold ${(ind.macd ?? 0) >= 0 ? 'up' : 'down'}`;
+      macdEl.textContent = ind.macd?.toFixed(4) ?? '—';
+      const histEl = document.getElementById('stHist');
+      histEl.className = `text-xl font-bold ${(ind.hist ?? 0) >= 0 ? 'up' : 'down'}`;
+      histEl.textContent = ind.hist?.toFixed(4) ?? '—';
+      document.getElementById('stratInd').classList.remove('hidden');
+    }
+
+    const cl = d.conditions || {};
+    if (Object.keys(cl).length) {
+      document.getElementById('condLong').innerHTML =
+        ['long_kd','long_macd','long_hist','long_ma50'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('condShort').innerHTML =
+        ['short_kd','short_macd','short_hist','short_ma50'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('condExitLong').innerHTML =
+        ['exit_long_ma','exit_long_j'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('condExitShort').innerHTML =
+        ['exit_short_ma','exit_short_j'].map(k => _condRow(k, cl[k])).join('');
+      document.getElementById('stratConds').classList.remove('hidden');
+    }
+
+    statusEl.textContent = `更新：${new Date().toLocaleTimeString('zh-TW')}`;
+    _loadSignalHistory(ticker);
+  } catch(e) {
+    statusEl.textContent = '載入失敗（需永豐登入）';
+  }
+}
+
+async function _loadSignalHistory(ticker) {
+  const el = document.getElementById('signalHistory');
+  el.innerHTML = '<div class="text-slate-500 text-xs">載入中…</div>';
+  try {
+    const rows = await fetch(`${BASE}/monitor_log/${ticker}`).then(r => r.json());
+    if (!rows.length) { el.innerHTML = '<div class="text-slate-500 text-xs">尚無監控紀錄（啟動監控後會記錄）</div>'; return; }
+
+    // 按日期分組
+    const byDay = {};
+    rows.forEach(r => {
+      const day = String(r.logged_at || '').slice(0, 10);
+      if (!byDay[day]) byDay[day] = [];
+      byDay[day].push(r);
+    });
+
+    const thead = `<thead><tr class="text-slate-500 border-b border-slate-700">
+      <th class="text-left py-1 pr-3">時間</th>
+      <th class="text-center pr-3">訊號</th>
+      <th class="text-right pr-3">價格</th>
+      <th class="text-right pr-3">K</th>
+      <th class="text-right pr-3">J</th>
+      <th class="text-right">Hist</th>
+    </tr></thead>`;
+
+    const sigColor = { LONG: 'text-emerald-400', SHORT: 'text-red-400', FLAT: 'text-slate-500' };
+    const html = Object.keys(byDay).sort().reverse().map(day => {
+      const dayRows = byDay[day].map(r => {
+        const t = String(r.logged_at || '').slice(11, 19);
+        const sc = sigColor[r.sig] || 'text-slate-500';
+        const hCls = (+r.hist || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+        return `<tr class="border-b border-slate-800 hover:bg-slate-800/40">
+          <td class="py-1 pr-3 text-slate-400 font-mono">${t}</td>
+          <td class="text-center pr-3 font-bold ${sc} text-xs">${r.sig || 'FLAT'}</td>
+          <td class="text-right pr-3 text-slate-200">${(+r.price||0).toFixed(2)}</td>
+          <td class="text-right pr-3 text-slate-300">${(+r.k||0).toFixed(1)}</td>
+          <td class="text-right pr-3 text-slate-300">${(+r.j||0).toFixed(1)}</td>
+          <td class="text-right ${hCls}">${(+r.hist||0).toFixed(4)}</td>
+        </tr>`;
+      }).join('');
+      return `<div class="mt-3">
+        <div class="text-xs text-slate-400 font-semibold mb-1 px-1 py-0.5 bg-slate-800 rounded">${day}</div>
+        <table class="w-full text-xs font-mono border-collapse">${thead}<tbody>${dayRows}</tbody></table>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `<div class="max-h-72 overflow-y-auto">${html}</div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="text-slate-500 text-xs">載入失敗</div>';
+  }
+}
+
+function renderTechnical(t) {
+  const fmt2 = v => v != null ? Number(v).toFixed(2) : '—';
+  const fmt4 = v => v != null ? Number(v).toFixed(4) : '—';
+  document.getElementById('maRows').innerHTML = [
+    ['MA 5', t.ma5], ['MA 20', t.ma20], ['MA 60', t.ma60]
+  ].map(([label, val]) => {
+    const up = t.last != null && val != null && t.last >= val;
+    return `<div class="flex justify-between items-center">
+      <span class="text-slate-400">${label}</span>
+      <span class="font-medium">${fmt2(val)}
+        ${val != null ? `<span class="${up ? 'up' : 'down'}">${up ? '↑' : '↓'}</span>` : ''}
+      </span>
+    </div>`;
+  }).join('');
+
+  const rsi = t.rsi ?? 0;
+  const rCls = rsi >= 70 ? 'up' : rsi <= 30 ? 'down' : 'text-blue-400';
+  const rLabel = rsi >= 70 ? ' 超買' : rsi <= 30 ? ' 超賣' : '';
+  document.getElementById('rsiVal').className = `text-3xl font-bold ${rCls}`;
+  document.getElementById('rsiVal').textContent = t.rsi != null ? `${rsi.toFixed(1)}${rLabel}` : '—';
+  const bar = document.getElementById('rsiBar');
+  bar.style.width = `${rsi}%`;
+  bar.style.background = rsi >= 70 ? '#ef4444' : rsi <= 30 ? '#22c55e' : '#3b82f6';
+
+  document.getElementById('tMacd').textContent   = fmt4(t.macd);
+  document.getElementById('tSignal').textContent = fmt4(t.signal);
+  const hist = document.getElementById('tHist');
+  hist.className = `text-xl font-bold ${colorClass(t.histogram)}`;
+  hist.textContent = fmt4(t.histogram);
+}
+</script>
+  <!-- Smart Order Modal -->
+  <div id="smartModal" class="hidden fixed inset-0 flex items-center justify-center z-50"
+       style="background:rgba(0,0,0,.75)">
+    <div class="card w-80">
+      <div class="font-bold text-base mb-1">智慧單設定</div>
+      <div id="smInfo" class="text-sm text-slate-400 mb-4"></div>
+      <div class="space-y-3 mb-5">
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-300">停損</span>
+          <div class="flex items-center gap-2">
+            <input id="smSL" type="number" step="0.5" min="0.5" value="5"
+              class="w-14 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-right text-sm text-white"
+              oninput="updateSmPrices()">
+            <span class="text-xs text-slate-400">%</span>
+            <span id="smSLPrice" class="text-xs text-green-400 w-16 text-right">—</span>
+          </div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-slate-300">停利</span>
+          <div class="flex items-center gap-2">
+            <input id="smTP" type="number" step="0.5" min="0.5" value="10"
+              class="w-14 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-right text-sm text-white"
+              oninput="updateSmPrices()">
+            <span class="text-xs text-slate-400">%</span>
+            <span id="smTPPrice" class="text-xs text-red-400 w-16 text-right">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <button onclick="doSmartOrder(false)"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium transition">
+          1　執行智慧單
+        </button>
+        <button onclick="doSmartOrder(true)"
+          class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-sm font-medium transition">
+          2　自動執行智慧單（不再詢問）
+        </button>
+        <button onclick="skipSmartOrder()"
+          class="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 rounded-lg text-sm font-medium transition">
+          3　關閉智慧單
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Toast -->
+  <div id="orderToast" class="hidden fixed bottom-6 right-6 card text-sm z-50 max-w-xs"
+       style="border:1px solid #334155;white-space:pre-line"></div>
+</body>
+</html>
