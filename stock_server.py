@@ -1,4 +1,6 @@
 import os
+import json
+import uuid
 import asyncio
 import requests
 import pandas as pd
@@ -9,6 +11,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
+import strategy_engine
+import report_generator
 
 load_dotenv()
 
@@ -59,9 +64,28 @@ def _twse_kbars(ticker: str, days: int) -> list:
 
 import csv as _csv
 
-SIGNAL_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signals.csv")
-SMART_LOG   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smart_orders.csv")
-MONITOR_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_log.csv")
+SIGNAL_LOG       = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signals.csv")
+SMART_LOG        = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smart_orders.csv")
+MONITOR_LOG      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_log.csv")
+STRATEGIES_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategies.json")
+HISTORY_FILE     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "analysis_history.json")
+SCREEN_HIST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screen_history.json")
+REPORTS_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+
+_TG_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+_TG_CHAT  = os.getenv("CHAT_ID", "")
+
+def _tg(msg: str):
+    if not _TG_TOKEN or not _TG_CHAT:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{_TG_TOKEN}/sendMessage",
+            json={"chat_id": _TG_CHAT, "text": msg, "parse_mode": "Markdown"},
+            timeout=5,
+        )
+    except Exception:
+        pass
 
 _smart_cfg: dict = {"auto": False, "stop_loss_pct": 5.0, "take_profit_pct": 10.0}
 
@@ -102,6 +126,30 @@ def _save_monitor_entry(entry: dict):
                     row.get("j",0), row.get("hist",0), row.get("msg","")])
 
 _load_monitor_log()
+
+
+# ── 錢哨：策略 / 分析歷史 持久化 ─────────────────────────────────────────────
+
+def _load_json(path: str) -> list:
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_json(path: str, data: list):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
 def _place_order_internal(ticker: str, action: str, price: float, qty: int) -> dict:
     p = _providers["shioaji"]
     if not p._api:
@@ -126,6 +174,8 @@ def _place_order_internal(ticker: str, action: str, price: float, qty: int) -> d
         result["stop_loss"]   = round(price * (1 - sl_pct / 100), 2)
         result["take_profit"] = round(price * (1 + tp_pct / 100), 2)
         _log_smart_order(result)
+        act_zh = "買進" if action == "buy" else "賣出"
+        _tg(f"*下單成功｜{ticker}*\n{act_zh} {qty} 張 @ {price}\n停損 {result['stop_loss']}　停利 {result['take_profit']}")
         return result
     except Exception as e:
         return {"error": str(e)}
@@ -188,6 +238,7 @@ async def _check_monitor(ticker: str, mon: dict):
                     "signal": "EXIT_LONG→SHORT", "quantity": st["qty"],
                     "k": round(ind.get("k",0),2), "j": round(ind.get("j",0),2)})
                 entry["msg"] += "  → 等待平多確認"
+                _tg(f"*訊號｜{ticker}*\n平多訊號 @ {last_p}\nK={ind.get('k',0):.1f} J={ind.get('j',0):.1f}\n請至儀表板確認下單")
         elif cur_pos == "SHORT" and sig == "LONG":
             if _smart_cfg.get("auto"):
                 await asyncio.get_event_loop().run_in_executor(
@@ -199,8 +250,10 @@ async def _check_monitor(ticker: str, mon: dict):
                     "signal": "EXIT_SHORT→LONG", "quantity": st["qty"],
                     "k": round(ind.get("k",0),2), "j": round(ind.get("j",0),2)})
                 entry["msg"] += "  → 等待平空確認"
+                _tg(f"*訊號｜{ticker}*\n平空訊號 @ {last_p}\nK={ind.get('k',0):.1f} J={ind.get('j',0):.1f}\n請至儀表板確認下單")
         elif cur_pos is None and sig in ("LONG", "SHORT"):
             action = "buy" if sig == "LONG" else "sell"
+            sig_zh = "做多" if sig == "LONG" else "做空"
             if _smart_cfg.get("auto"):
                 res = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: _place_order_internal(ticker, action, last_p, qty))
@@ -211,6 +264,7 @@ async def _check_monitor(ticker: str, mon: dict):
                     "signal": sig, "quantity": qty,
                     "k": round(ind.get("k",0),2), "j": round(ind.get("j",0),2)})
                 entry["msg"] += f"  → 等待確認下單 {qty}張"
+                _tg(f"*訊號｜{ticker}*\n{sig_zh} {qty}張 @ {last_p}\nK={ind.get('k',0):.1f} J={ind.get('j',0):.1f}\n請至儀表板確認下單")
 
         _save_monitor_entry(entry)
         mon["log"].insert(0, entry)
@@ -543,35 +597,342 @@ def dashboard():
     return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html"))
 
 
+@app.get("/qianshao.html")
+def qianshao_page():
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "qianshao.html"))
+
+
+@app.get("/qianshao")
+def qianshao():
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategy_manager_preview.html"))
+
+
+FINMIND = "https://api.finmindtrade.com/api/v4/data"
+TAIFEX = "https://openapi.taifex.com.tw/v1"
+
+_finmind_cache: dict = {}
+
+def _finmind(dataset: str, data_id: str = "", days: int = 90) -> list:
+    key = f"{dataset}:{data_id}:{days}"
+    cached = _finmind_cache.get(key)
+    now = datetime.now()
+    if cached and (now - cached["ts"]).total_seconds() < 600:
+        return cached["data"]
+    start = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+    params = {"dataset": dataset, "start_date": start}
+    if data_id: params["data_id"] = data_id
+    try:
+        r = requests.get(FINMIND, params=params, timeout=10).json()
+        data = r.get("data", []) if r.get("status") == 200 else []
+        _finmind_cache[key] = {"ts": now, "data": data}
+        return data
+    except Exception:
+        return []
+
+
 @app.get("/fundamental/{ticker}")
 def get_fundamental(ticker: str):
     try:
         rows = requests.get(f"{TWSE}/exchangeReport/BWIBBU_d", timeout=8).json()
         row = next((r for r in rows if r.get("Code") == ticker), None)
-        if not row:
-            return {"pe": None, "pb": None, "dividendYield": None}
         def to_float(k):
             try: return float(row[k].replace(",", ""))
             except: return None
-        return {"pe": to_float("PEratio"), "pb": to_float("PBratio"), "dividendYield": to_float("DividendYield")}
+        pe = to_float("PEratio") if row else None
+        pb = to_float("PBratio") if row else None
+        dy = to_float("DividendYield") if row else None
+
+        eps_4q = None
+        revenue_yoy = None
+        net_margin = None
+        op_margin = None
+
+        fs = _finmind("TaiwanStockFinancialStatements", ticker, days=540)
+        if fs:
+            by_date: dict = {}
+            for r in fs:
+                d = r.get("date"); t = r.get("type"); v = r.get("value")
+                if not d or v is None: continue
+                by_date.setdefault(d, {})[t] = v
+            quarters = sorted(by_date.keys(), reverse=True)
+            eps_vals = [by_date[d].get("EPS") for d in quarters if by_date[d].get("EPS") is not None][:4]
+            if eps_vals: eps_4q = round(sum(eps_vals), 2)
+            latest = by_date.get(quarters[0], {}) if quarters else {}
+            rev = latest.get("Revenue")
+            op_inc = latest.get("OperatingIncome")
+            net_inc = latest.get("IncomeFromContinuingOperations") or latest.get("TotalConsolidatedProfitForThePeriod")
+            if rev and op_inc: op_margin = round(op_inc / rev * 100, 2)
+            if rev and net_inc: net_margin = round(net_inc / rev * 100, 2)
+
+        rev = _finmind("TaiwanStockMonthRevenue", ticker, days=400)
+        if rev and len(rev) >= 13:
+            rev_sorted = sorted(rev, key=lambda x: x.get("date", ""), reverse=True)
+            this_m = rev_sorted[0].get("revenue")
+            yoy_m = next((r.get("revenue") for r in rev_sorted if r.get("revenue_year") == rev_sorted[0].get("revenue_year") - 1 and r.get("revenue_month") == rev_sorted[0].get("revenue_month")), None)
+            if this_m and yoy_m and yoy_m > 0:
+                revenue_yoy = round((this_m - yoy_m) / yoy_m * 100, 2)
+
+        return {
+            "pe": pe, "pb": pb, "dividendYield": dy,
+            "eps4q": eps_4q,
+            "revenueYoY": revenue_yoy,
+            "netMargin": net_margin,
+            "opMargin": op_margin,
+        }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
 
 
 @app.get("/chip/{ticker}")
-def get_chip(ticker: str):
+def get_chip(ticker: str, history_days: int = 0):
     try:
-        rows = requests.get(f"{TWSE}/fund/T86", timeout=10).json()
-        row = next((r for r in rows if r.get("Code") == ticker), None)
-        if not row:
-            return {"foreignNet": 0, "investTrustNet": 0, "dealerNet": 0, "total": 0}
-        def parse(k):
-            try: return float(row[k].replace(",", ""))
-            except: return 0.0
-        f = parse("外陸資買賣超股數(千股)")
-        tr = parse("投信買賣超股數(千股)")
-        d = parse("自營商買賣超股數(千股)")
-        return {"foreignNet": f, "investTrustNet": tr, "dealerNet": d, "total": f + tr + d}
+        f, tr, d = 0.0, 0.0, 0.0
+        try:
+            r = requests.get(f"{TWSE}/fund/T86", timeout=10)
+            rows = r.json()
+            row = next((rr for rr in rows if rr.get("Code") == ticker), None)
+            def parse(k):
+                try: return float(row[k].replace(",", ""))
+                except: return 0.0
+            if row:
+                f = parse("外陸資買賣超股數(千股)")
+                tr = parse("投信買賣超股數(千股)")
+                d = parse("自營商買賣超股數(千股)")
+        except Exception:
+            pass
+        result = {"foreignNet": f, "investTrustNet": tr, "dealerNet": d, "total": f + tr + d}
+
+        if history_days > 0:
+            hist = _finmind("TaiwanStockInstitutionalInvestorsBuySell", ticker, days=history_days * 2)
+            by_date: dict = {}
+            for r in hist:
+                d_ = r.get("date"); name = r.get("name"); buy = r.get("buy", 0) or 0; sell = r.get("sell", 0) or 0
+                if not d_: continue
+                by_date.setdefault(d_, {})[name] = buy - sell
+            dates = sorted(by_date.keys(), reverse=True)[:history_days]
+            def streak(key_match):
+                cnt = 0; sign = 0
+                for dt in dates:
+                    rec = by_date.get(dt, {})
+                    val = sum(v for k, v in rec.items() if any(m in k for m in key_match))
+                    if val == 0: break
+                    s = 1 if val > 0 else -1
+                    if sign == 0: sign = s
+                    elif sign != s: break
+                    cnt += 1
+                return cnt * sign
+            result["foreignStreak"] = streak(["Foreign"])
+            result["trustStreak"] = streak(["Investment_Trust"])
+            result["dealerStreak"] = streak(["Dealer"])
+            result["history"] = [{"date": dt, **by_date[dt]} for dt in dates]
+
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/events/{ticker}")
+def get_events(ticker: str):
+    try:
+        events = []
+
+        def _twroc_to_iso(s: str):
+            if not s or len(s) != 7: return ""
+            try:
+                yr = int(s[:3]) + 1911
+                return f"{yr}-{s[3:5]}-{s[5:]}"
+            except Exception: return ""
+
+        def _minus_workdays(iso: str, n: int) -> str:
+            try:
+                cur = datetime.strptime(iso, "%Y-%m-%d").date()
+                cnt = 0
+                while cnt < n:
+                    cur = cur - timedelta(days=1)
+                    if cur.weekday() < 5: cnt += 1
+                return cur.isoformat()
+            except Exception: return ""
+
+        try:
+            rows = requests.get(f"{TWSE}/opendata/t187ap45_L", timeout=10).json()
+            for r in rows:
+                if r.get("公司代號") != ticker: continue
+                sh_iso = _twroc_to_iso(r.get("股東會日期", ""))
+                ex_iso = _twroc_to_iso(r.get("董事會（擬議）股利分派日") or r.get("董事會擬議股利分派日") or "")
+                cash = r.get("股東配發-盈餘分配之現金股利(元/股)") or r.get("董事會擬議分派之盈餘現金股利(元/股)") or ""
+                try: cash = f"{float(cash):.2f}" if cash else ""
+                except Exception: pass
+                if sh_iso:
+                    events.append({"type": "shareholder_meeting", "date": sh_iso, "label": "股東會", "extra": ""})
+                    repay_iso = _minus_workdays(sh_iso, 6)
+                    if repay_iso: events.append({"type": "short_force_repay", "date": repay_iso, "label": "融券強制回補日", "extra": "股東會前 6 個營業日"})
+                if ex_iso:
+                    events.append({"type": "ex_dividend", "date": ex_iso, "label": "除權息", "extra": f"現金股利 ${cash}" if cash else ""})
+                break
+        except Exception: pass
+
+        try:
+            margin_rows = requests.get(f"{TWSE}/exchangeReport/MI_MARGN", timeout=10).json()
+            mr = next((r for r in margin_rows if r.get("股票代號") == ticker), None)
+            if mr:
+                short_bal = mr.get("融券今日餘額", "0").replace(",", "")
+                events.append({"type": "short_balance", "date": "", "label": "融券餘額", "extra": f"{short_bal} 張"})
+        except Exception: pass
+
+        today = datetime.today().date()
+        for e in events:
+            if e.get("date"):
+                try:
+                    ed = datetime.strptime(e["date"], "%Y-%m-%d").date()
+                    e["daysLeft"] = (ed - today).days
+                except Exception: pass
+        events.sort(key=lambda x: x.get("daysLeft", 9999))
+        return {"ticker": ticker, "events": events}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/macro/dashboard")
+def get_macro_dashboard():
+    try:
+        result = {}
+
+        try:
+            pcr = requests.get(f"{TAIFEX}/PutCallRatio", timeout=10).json()
+            if pcr:
+                latest = pcr[0]
+                result["pcr"] = float(latest.get("PutCallVolumeRatio%", 0)) / 100 if latest.get("PutCallVolumeRatio%") else None
+                result["pcrOI"] = float(latest.get("PutCallOIRatio%", 0)) / 100 if latest.get("PutCallOIRatio%") else None
+                result["pcrDate"] = latest.get("Date")
+        except Exception: pass
+
+        spot_close, spot_chg = None, None
+        try:
+            taiex = requests.get(f"{TWSE}/exchangeReport/MI_INDEX", params={"type": "IND"}, timeout=10).json()
+            for r in taiex:
+                if r.get("指數") == "發行量加權股價指數":
+                    cp = r.get("收盤指數")
+                    chg = r.get("漲跌點數")
+                    direction = r.get("漲跌")
+                    spot_close = float(str(cp).replace(",", "")) if cp else None
+                    if chg and direction:
+                        spot_chg = float(str(chg).replace(",", ""))
+                        if direction == "-": spot_chg = -spot_chg
+                    break
+        except Exception: pass
+        result["spot"] = spot_close
+        result["spotChange"] = spot_chg
+
+        try:
+            fut = requests.get(f"{TAIFEX}/DailyMarketReportFut", timeout=10).json()
+            tx_near = [r for r in fut if r.get("Contract") == "TX" and r.get("TradingSession") == "一般"]
+            if tx_near:
+                tx_near.sort(key=lambda x: x.get("ContractMonth(Week)", ""))
+                near = tx_near[0]
+                result["futClose"] = float(str(near.get("Last", "0")).replace(",", "")) if near.get("Last") not in ("-", "", None) else None
+                result["futChange"] = float(str(near.get("Change", "0")).replace(",", "")) if near.get("Change") not in ("-", "", None) else None
+                result["futOI"] = int(str(near.get("OpenInterest", "0")).replace(",", "")) if near.get("OpenInterest") not in ("-", "", None) else None
+                result["futVolume"] = int(str(near.get("Volume", "0")).replace(",", "")) if near.get("Volume") not in ("-", "", None) else None
+                if result.get("futClose") and spot_close:
+                    result["basis"] = round((result["futClose"] - spot_close) / spot_close * 100, 3)
+        except Exception: pass
+
+        try:
+            opt = requests.get(f"{TAIFEX}/DailyMarketReportOpt", timeout=15).json()
+            txo = [r for r in opt if r.get("Contract") == "TXO" and r.get("TradingSession") == "一般"]
+            if txo and spot_close:
+                contracts = sorted({r.get("ContractMonth(Week)", "") for r in txo})
+                near_month = contracts[0] if contracts else ""
+                near_opts = [r for r in txo if r.get("ContractMonth(Week)") == near_month]
+                calls = [r for r in near_opts if r.get("CallPut") == "買權"]
+                puts = [r for r in near_opts if r.get("CallPut") == "賣權"]
+                def to_int(v):
+                    try: return int(str(v).replace(",", ""))
+                    except: return 0
+                def to_f(v):
+                    try: return float(str(v).replace(",", ""))
+                    except: return None
+                if calls:
+                    call_max = max(calls, key=lambda x: to_int(x.get("OpenInterest")))
+                    result["callMaxOIStrike"] = to_f(call_max.get("StrikePrice"))
+                    result["callMaxOI"] = to_int(call_max.get("OpenInterest"))
+                if puts:
+                    put_max = max(puts, key=lambda x: to_int(x.get("OpenInterest")))
+                    result["putMaxOIStrike"] = to_f(put_max.get("StrikePrice"))
+                    result["putMaxOI"] = to_int(put_max.get("OpenInterest"))
+                atm = min(calls + puts, key=lambda x: abs((to_f(x.get("StrikePrice")) or 0) - spot_close)) if (calls + puts) else None
+                if atm:
+                    atm_strike = to_f(atm.get("StrikePrice"))
+                    atm_call = next((r for r in calls if to_f(r.get("StrikePrice")) == atm_strike), None)
+                    atm_put = next((r for r in puts if to_f(r.get("StrikePrice")) == atm_strike), None)
+                    cp = to_f(atm_call.get("Close")) if atm_call else None
+                    pp = to_f(atm_put.get("Close")) if atm_put else None
+                    if cp is not None and pp is not None:
+                        result["skew"] = round(pp - cp, 2)
+                        result["atmStrike"] = atm_strike
+        except Exception: pass
+
+        ai_parts = []
+        if result.get("futClose") and result.get("spot"):
+            diff = (result["futClose"] - result["spot"]) / result["spot"] * 100
+            if diff > 0.3: ai_parts.append(f"期貨領先現貨 +{diff:.2f}%，指數部位有領先表態跡象。")
+            elif diff < -0.3: ai_parts.append(f"期貨弱於現貨 {diff:.2f}%，期貨部位偏空表態。")
+        if result.get("pcr") is not None:
+            p = result["pcr"]
+            if p < 0.85: ai_parts.append(f"PCR {p:.2f} 偏多結構，選擇權市場看多情緒高亢，留意過熱追價風險。")
+            elif p > 1.15: ai_parts.append(f"PCR {p:.2f} 偏空保護，市場大量買進 Put 下檔防護。")
+            else: ai_parts.append(f"PCR {p:.2f} 中性結構。")
+        if result.get("basis") is not None:
+            b = result["basis"]
+            if b > 0.1: ai_parts.append(f"基差 +{b:.2f}% 短線資金強勢追價。")
+            elif b < -0.1: ai_parts.append(f"基差 {b:.2f}% 貼水避險偏重。")
+        result["aiText"] = "".join(ai_parts) or "市場狀態平穩，無特殊訊號。"
+
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/branch/{ticker}")
+def get_branch(ticker: str):
+    """分點進出 — FinMind 免費版不提供，用替代資料：外資持股比 + 三大法人歷史"""
+    try:
+        result = {"ticker": ticker, "available": False, "note": "分點進出資料需付費資料源 (FinMind Pro / TEJ)，目前以三大法人歷史替代"}
+
+        hist = _finmind("TaiwanStockInstitutionalInvestorsBuySell", ticker, days=30)
+        if hist:
+            by_date: dict = {}
+            for r in hist:
+                d = r.get("date"); name = r.get("name"); buy = r.get("buy", 0) or 0; sell = r.get("sell", 0) or 0
+                if not d: continue
+                by_date.setdefault(d, {})[name] = (buy - sell) / 1000
+            dates = sorted(by_date.keys())
+            series = []
+            for dt in dates:
+                rec = by_date[dt]
+                f = sum(v for k, v in rec.items() if "Foreign" in k)
+                t = sum(v for k, v in rec.items() if "Trust" in k)
+                dl = sum(v for k, v in rec.items() if "Dealer" in k)
+                series.append({"date": dt, "foreign": round(f, 1), "trust": round(t, 1), "dealer": round(dl, 1), "total": round(f + t + dl, 1)})
+            result["series"] = series
+            result["available"] = True
+
+            cum = {"foreign": 0.0, "trust": 0.0, "dealer": 0.0}
+            for s in series:
+                cum["foreign"] += s["foreign"]; cum["trust"] += s["trust"]; cum["dealer"] += s["dealer"]
+            ranking = sorted([
+                {"name": "外資及陸資", "type": "外資系", "net": round(cum["foreign"], 0)},
+                {"name": "投信", "type": "本土系", "net": round(cum["trust"], 0)},
+                {"name": "自營商", "type": "本土系", "net": round(cum["dealer"], 0)},
+            ], key=lambda x: -abs(x["net"]))
+            result["ranking"] = ranking
+
+        sh = _finmind("TaiwanStockShareholding", ticker, days=14)
+        if sh:
+            sh_sorted = sorted(sh, key=lambda x: x.get("date", ""), reverse=True)
+            result["foreignRatio"] = sh_sorted[0].get("ForeignInvestmentSharesRatio")
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -945,6 +1306,382 @@ def get_strategy_signal(ticker: str, interval: int = 3):
         raise HTTPException(status_code=503, detail=str(e))
 
 
+# ── 錢哨：策略管理 / 分析 ────────────────────────────────────────────────────
+
+def _empty_conditions() -> dict:
+    return {"fundamental": [], "technical": [], "chips": [], "pattern": [], "volume": []}
+
+
+def _empty_logic_notes() -> dict:
+    return {"summary": "", "entry_logic": "", "exit_logic": "", "remarks": ""}
+
+
+@app.get("/qianshao/strategies")
+def list_strategies():
+    return _load_json(STRATEGIES_FILE)
+
+
+@app.post("/qianshao/strategies")
+def create_strategy(body: dict):
+    if not body.get("name"):
+        raise HTTPException(status_code=400, detail="缺少 name")
+    now = _now_iso()
+    strat = {
+        "id":          body.get("id") or str(uuid.uuid4()),
+        "name":        body["name"],
+        "created_at":  now,
+        "updated_at":  now,
+        "conditions":  body.get("conditions") or _empty_conditions(),
+        "logic_notes": body.get("logic_notes") or _empty_logic_notes(),
+    }
+    strategies = _load_json(STRATEGIES_FILE)
+    strategies.append(strat)
+    _save_json(STRATEGIES_FILE, strategies)
+    return strat
+
+
+@app.put("/qianshao/strategies/{strategy_id}")
+def update_strategy(strategy_id: str, body: dict):
+    strategies = _load_json(STRATEGIES_FILE)
+    for s in strategies:
+        if s.get("id") == strategy_id:
+            for k in ("name", "conditions", "logic_notes"):
+                if k in body:
+                    s[k] = body[k]
+            s["updated_at"] = _now_iso()
+            _save_json(STRATEGIES_FILE, strategies)
+            return s
+    raise HTTPException(status_code=404, detail="策略不存在")
+
+
+@app.delete("/qianshao/strategies/{strategy_id}")
+def delete_strategy(strategy_id: str):
+    strategies = _load_json(STRATEGIES_FILE)
+    new_list = [s for s in strategies if s.get("id") != strategy_id]
+    if len(new_list) == len(strategies):
+        raise HTTPException(status_code=404, detail="策略不存在")
+    _save_json(STRATEGIES_FILE, new_list)
+    return {"status": "deleted", "id": strategy_id}
+
+
+def _build_chip_data_from_existing(ticker: str) -> dict:
+    """先嘗試直接呼叫 strategy_engine.calc_chips（爬 5 個交易日），
+    若失敗則 fallback 至既有 /chip 單日資料。"""
+    try:
+        return strategy_engine.calc_chips(ticker)
+    except Exception:
+        pass
+    try:
+        rows = requests.get(f"{TWSE}/fund/T86", timeout=10).json()
+        row = next((r for r in rows if r.get("Code") == ticker), None)
+        if row:
+            def parse(k):
+                try: return float(row[k].replace(",", ""))
+                except: return 0.0
+            f  = parse("外陸資買賣超股數(千股)")
+            tr = parse("投信買賣超股數(千股)")
+            d  = parse("自營商買賣超股數(千股)")
+            today = datetime.today().strftime("%m/%d")
+            chips = [{
+                "date":    today,
+                "foreign": round(f),
+                "trust":   round(tr),
+                "dealer":  round(d),
+                "total":   round(f + tr + d),
+            }]
+            level = "safe" if (f + tr) > 0 else ("danger" if (f + tr) < 0 else "watch")
+            reason = "法人單日買超" if level == "safe" else ("法人單日賣超" if level == "danger" else "法人持平")
+            return {
+                "chips":      chips,
+                "conclusion": f"當日外資 {round(f)}張、投信 {round(tr)}張",
+                "main_force": {"level": level, "reason": reason},
+                "stats": {
+                    "foreign_buy_days":  1 if f  > 0 else 0,
+                    "foreign_sell_days": 1 if f  < 0 else 0,
+                    "trust_buy_days":    1 if tr > 0 else 0,
+                    "trust_sell_days":   1 if tr < 0 else 0,
+                },
+            }
+    except Exception:
+        pass
+    return {
+        "chips": [],
+        "conclusion": "無籌碼資料",
+        "main_force": {"level": "watch", "reason": "無資料"},
+        "stats": {"foreign_buy_days": 0, "foreign_sell_days": 0,
+                  "trust_buy_days": 0, "trust_sell_days": 0},
+    }
+
+
+def _get_fundamental_for_ticker(ticker: str, last_price: Optional[float] = None) -> dict:
+    try:
+        rows = requests.get(f"{TWSE}/exchangeReport/BWIBBU_d", timeout=8).json()
+        row = next((r for r in rows if r.get("Code") == ticker), None)
+        if not row:
+            return {}
+        def to_float(k):
+            try: return float(row[k].replace(",", ""))
+            except: return None
+        pe = to_float("PEratio")
+        eps = round(last_price / pe, 2) if (pe and pe > 0 and last_price) else None
+        return {
+            "pe":            pe,
+            "pb":            to_float("PBratio"),
+            "dividendYield": to_float("DividendYield"),
+            "eps":           eps,
+            "revenue_yoy":   None,
+        }
+    except Exception:
+        return {}
+
+
+@app.post("/qianshao/analyse")
+def analyse_strategy(body: dict):
+    strategy_id = body.get("strategy_id")
+    ticker      = str(body.get("ticker", "")).strip().upper()
+    if not strategy_id or not ticker:
+        raise HTTPException(status_code=400, detail="缺少 strategy_id 或 ticker")
+
+    strategies = _load_json(STRATEGIES_FILE)
+    strategy   = next((s for s in strategies if s.get("id") == strategy_id), None)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="策略不存在")
+
+    kbars = active.get_kbars(ticker, days=120)
+    if not kbars or len(kbars) < 20:
+        kbars = _twse_kbars(ticker, 120)
+    if not kbars or len(kbars) < 20:
+        raise HTTPException(status_code=503, detail="K 棒資料不足，至少需 20 根日K")
+
+    last_price  = float(kbars[-1].get("Close") or 0) or None
+    fundamental = _get_fundamental_for_ticker(ticker, last_price=last_price)
+    chips_data  = _build_chip_data_from_existing(ticker)
+
+    try:
+        result = strategy_engine.analyse(strategy, ticker, kbars,
+                                         fundamental=fundamental, chips_data=chips_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析失敗：{e}")
+
+    record = {
+        "id":            str(uuid.uuid4()),
+        "strategy_id":   strategy_id,
+        "strategy_name": strategy.get("name"),
+        "ticker":        ticker,
+        "stock_name":    _get_stock_name(ticker),
+        "analyzed_at":   _now_iso(),
+        "result":        result,
+    }
+    history = _load_json(HISTORY_FILE)
+    history.append(record)
+    if len(history) > 500:
+        history = history[-500:]
+    _save_json(HISTORY_FILE, history)
+    return record
+
+
+@app.get("/qianshao/analysis/history")
+def list_analysis_history(ticker: str = "", strategy_id: str = "", days: int = 30):
+    history = _load_json(HISTORY_FILE)
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    out = []
+    for r in history:
+        if r.get("analyzed_at", "") < cutoff:
+            continue
+        if ticker and r.get("ticker") != ticker.upper():
+            continue
+        if strategy_id and r.get("strategy_id") != strategy_id:
+            continue
+        result = r.get("result", {}) or {}
+        out.append({
+            "id":            r.get("id"),
+            "strategy_id":   r.get("strategy_id"),
+            "strategy_name": r.get("strategy_name"),
+            "ticker":        r.get("ticker"),
+            "stock_name":    r.get("stock_name"),
+            "analyzed_at":   r.get("analyzed_at"),
+            "win_rate":      result.get("win_rate"),
+            "trend":         result.get("indicators", {}).get("trend_code"),
+            "main_force":    result.get("main_force_signal", {}).get("level"),
+            "suggestion":    result.get("suggestion", {}).get("strategy"),
+        })
+    out.sort(key=lambda x: x.get("analyzed_at", ""), reverse=True)
+    return out
+
+
+@app.get("/qianshao/analysis/{record_id}")
+def get_analysis_record(record_id: str):
+    history = _load_json(HISTORY_FILE)
+    record = next((r for r in history if r.get("id") == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    return record
+
+
+@app.delete("/qianshao/analysis/{record_id}")
+def delete_analysis_record(record_id: str):
+    history = _load_json(HISTORY_FILE)
+    new_list = [r for r in history if r.get("id") != record_id]
+    if len(new_list) == len(history):
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    _save_json(HISTORY_FILE, new_list)
+    return {"status": "deleted", "id": record_id}
+
+
+def _build_market_candidates(limit: int = 0) -> list:
+    """取得全市場 (ticker, name) 清單 — 用 _stock_names 快取"""
+    _get_stock_name("0000")  # 觸發 _stock_names 載入
+    items = [(t, n) for t, n in _stock_names.items() if t.isdigit() and len(t) == 4]
+    items.sort()
+    return items[:limit] if limit > 0 else items
+
+
+def _build_fundamental_map() -> dict:
+    """一次取所有股票 PE/PB/殖利率（BWIBBU_d）"""
+    try:
+        rows = requests.get(f"{TWSE}/exchangeReport/BWIBBU_d", timeout=10).json()
+    except Exception:
+        return {}
+    fmap = {}
+    for r in rows:
+        code = r.get("Code")
+        if not code:
+            continue
+        def to_float(k):
+            try: return float(r[k].replace(",", ""))
+            except: return None
+        fmap[code] = {
+            "pe":            to_float("PEratio"),
+            "pb":            to_float("PBratio"),
+            "dividendYield": to_float("DividendYield"),
+        }
+    return fmap
+
+
+@app.post("/qianshao/screen")
+def run_screen(body: dict):
+    strategy_id = body.get("strategy_id")
+    max_scan    = int(body.get("max_full_scan", 60))
+    if not strategy_id:
+        raise HTTPException(status_code=400, detail="缺少 strategy_id")
+    strategies = _load_json(STRATEGIES_FILE)
+    strategy = next((s for s in strategies if s.get("id") == strategy_id), None)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="策略不存在")
+
+    candidates       = _build_market_candidates()
+    fundamental_map  = _build_fundamental_map()
+
+    def kbars_fn(t):
+        return active.get_kbars(t, days=120) or _twse_kbars(t, 120)
+
+    result = strategy_engine.screen(
+        strategy, candidates, kbars_fn, fundamental_map,
+        chips_fn=None,  # 全市場不爬 5 日籌碼，提速；命中股可在 /qianshao/analyse 補
+        max_full_scan=max_scan,
+    )
+
+    record = {
+        "id":            str(uuid.uuid4()),
+        "strategy_id":   strategy_id,
+        "strategy_name": strategy.get("name"),
+        "screened_at":   _now_iso(),
+        **result,
+    }
+    history = _load_json(SCREEN_HIST_FILE)
+    cutoff = (datetime.now() - timedelta(days=30)).isoformat()
+    history = [h for h in history if h.get("screened_at", "") >= cutoff]
+    history.append(record)
+    _save_json(SCREEN_HIST_FILE, history)
+    return record
+
+
+@app.get("/qianshao/screen/history")
+def list_screen_history(strategy_id: str = "", days: int = 7):
+    history = _load_json(SCREEN_HIST_FILE)
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    out = []
+    for r in history:
+        if r.get("screened_at", "") < cutoff:
+            continue
+        if strategy_id and r.get("strategy_id") != strategy_id:
+            continue
+        out.append({
+            "id":            r.get("id"),
+            "strategy_id":   r.get("strategy_id"),
+            "strategy_name": r.get("strategy_name"),
+            "screened_at":   r.get("screened_at"),
+            "scan_count":    r.get("scan_count"),
+            "match_count":   r.get("match_count"),
+            "elapsed_sec":   r.get("elapsed_sec"),
+        })
+    out.sort(key=lambda x: x.get("screened_at", ""), reverse=True)
+    return out
+
+
+@app.get("/qianshao/screen/{record_id}")
+def get_screen_record(record_id: str):
+    history = _load_json(SCREEN_HIST_FILE)
+    record = next((r for r in history if r.get("id") == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    return record
+
+
+@app.delete("/qianshao/screen/{record_id}")
+def delete_screen_record(record_id: str):
+    history = _load_json(SCREEN_HIST_FILE)
+    new_list = [r for r in history if r.get("id") != record_id]
+    if len(new_list) == len(history):
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    _save_json(SCREEN_HIST_FILE, new_list)
+    return {"status": "deleted", "id": record_id}
+
+
+@app.get("/qianshao/screen/{record_id}/export.csv")
+def export_screen_csv(record_id: str):
+    from fastapi.responses import Response
+    from urllib.parse import quote
+    import io
+    history = _load_json(SCREEN_HIST_FILE)
+    record = next((r for r in history if r.get("id") == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    buf = io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["代碼","名稱","收盤價","漲跌%","成交量","均線","KD K","MACD","外資","投信","勝率%","燈號"])
+    for s in record.get("stocks", []):
+        w.writerow([
+            s.get("ticker",""), s.get("name",""), s.get("close",""), s.get("change_pct",""),
+            s.get("volume",""), s.get("ma_status",""), s.get("kd_k",""), s.get("macd_status",""),
+            s.get("foreign_net",""), s.get("trust_net",""), s.get("win_rate",""), s.get("signal",""),
+        ])
+    csv_bytes = ("﻿" + buf.getvalue()).encode("utf-8")  # BOM for Excel
+    fname = f"選股_{record.get('strategy_name','strategy')}_{(record.get('screened_at') or '')[:10]}.csv"
+    fname_ascii = fname.encode("ascii", "ignore").decode() or "screen.csv"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{fname_ascii}"; filename*=UTF-8\'\'{quote(fname)}',
+    }
+    return Response(content=csv_bytes, media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@app.get("/qianshao/analysis/{record_id}/report.html")
+def get_analysis_report(record_id: str):
+    from fastapi.responses import HTMLResponse
+    from urllib.parse import quote
+    history = _load_json(HISTORY_FILE)
+    record = next((r for r in history if r.get("id") == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="紀錄不存在")
+    html_str = report_generator.render(record)
+    fname = f"{record.get('ticker')}_{record.get('strategy_name','strategy')}_{(record.get('analyzed_at') or '')[:10]}.html"
+    fname_ascii = fname.encode("ascii", "ignore").decode() or "report.html"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{fname_ascii}"; filename*=UTF-8\'\'{quote(fname)}'
+    }
+    return HTMLResponse(content=html_str, headers=headers)
+
+
 @app.get("/quote/{ticker}")
 def get_quote(ticker: str):
     return active.get_quote(ticker)
@@ -980,6 +1717,39 @@ def xq_watchlist(group: str):
         return requests.get(f"{xq.base}/watchlist", params={"group": group}, timeout=8).json()
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.post("/start-xq")
+def start_xq():
+    import subprocess
+    vm = "dcf8c674-794d-426f-95d9-8d397f211a64"
+    # 先確認 XQ 是否已在執行
+    check = subprocess.run(
+        ["prlctl", "exec", vm, "powershell", "-Command",
+         "(Get-Process daqxqlite -ErrorAction SilentlyContinue) -ne $null"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if "True" in check.stdout:
+        return {"status": "already_running"}
+    subprocess.Popen(["prlctl", "exec", vm, "cmd", "/c", "schtasks /Run /TN StartXQ"])
+    return {"status": "starting"}
+
+
+@app.post("/restart-xq")
+def restart_xq():
+    import subprocess
+    vm = "dcf8c674-794d-426f-95d9-8d397f211a64"
+    kill_cmd = (
+        "for /f \"tokens=5\" %p in "
+        "('netstat -ano ^| findstr :8000.*LISTENING') "
+        "do taskkill /F /PID %p"
+    )
+    subprocess.run(["prlctl", "exec", vm, "cmd", "/c", kill_cmd], capture_output=True, timeout=10)
+    subprocess.Popen([
+        "prlctl", "exec", vm, "cmd", "/c",
+        r"cd /d C:\Balian\xq_bridge && start /B C:\Users\balianwang\miniconda3\python.exe server.py",
+    ])
+    return {"status": "restarting"}
 
 
 if __name__ == "__main__":
