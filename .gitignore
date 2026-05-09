@@ -9,3 +9,13 @@ __pycache__/
 .DS_Store
 *.dmg
 *.xcuserstate
+projects/
+strategies.json
+analysis_history.json
+screen_history.json
+reports/
+*.pdf
+開盤前置清單.html
+strategy_manager_preview.html
+dashboard_v2_preview.html
+StockDashboard/.swiftpm/xcode/xcuserdata/

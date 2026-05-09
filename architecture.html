@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benjamin 系統架構圖</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0e17; color: #e0e6ed; font-family: -apple-system, 'SF Pro Text', sans-serif; padding: 32px; min-height: 100vh; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: #8892a4; font-size: 14px; margin-bottom: 40px; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8892a4; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* ── Layout ── */
+  .arch { display: flex; flex-direction: column; gap: 48px; max-width: 1100px; margin: 0 auto; }
+
+  /* ── Layer ── */
+  .layer { position: relative; }
+  .layer-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #4a5568; margin-bottom: 12px; padding-left: 4px;
+  }
+  .layer-content { display: flex; gap: 16px; flex-wrap: wrap; }
+
+  /* ── Node Card ── */
+  .node {
+    border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px;
+    background: #111827; flex: 1; min-width: 220px; max-width: 340px;
+    transition: border-color .2s, box-shadow .2s; cursor: default; position: relative;
+  }
+  .node:hover { border-color: #334155; box-shadow: 0 4px 24px rgba(0,0,0,.4); }
+  .node-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .node-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .node-name { font-size: 15px; font-weight: 600; }
+  .node-desc { font-size: 12px; color: #8892a4; margin-bottom: 14px; line-height: 1.5; }
+  .node-meta { font-size: 11px; color: #4a5568; display: flex; flex-direction: column; gap: 4px; }
+  .node-meta span { display: flex; align-items: center; gap: 6px; }
+  .node-meta code { background: #1a2332; padding: 1px 6px; border-radius: 4px; color: #7dd3fc; font-size: 11px; }
+  .tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: auto; }
+
+  /* colors */
+  .cloud { border-left: 3px solid #3b82f6; }
+  .cloud .node-icon { background: #1e3a5f; color: #60a5fa; }
+  .cloud .tag { background: #1e3a5f; color: #60a5fa; }
+
+  .local-mac { border-left: 3px solid #22c55e; }
+  .local-mac .node-icon { background: #14532d; color: #4ade80; }
+  .local-mac .tag { background: #14532d; color: #4ade80; }
+
+  .win11 { border-left: 3px solid #f59e0b; }
+  .win11 .node-icon { background: #451a03; color: #fbbf24; }
+  .win11 .tag { background: #451a03; color: #fbbf24; }
+
+  .external { border-left: 3px solid #a78bfa; }
+  .external .node-icon { background: #2e1065; color: #a78bfa; }
+  .external .tag { background: #2e1065; color: #a78bfa; }
+
+  .db { border-left: 3px solid #f472b6; }
+  .db .node-icon { background: #500724; color: #f472b6; }
+  .db .tag { background: #500724; color: #f472b6; }
+
+  /* ── Flow Arrows ── */
+  .flows { margin-top: 48px; }
+  .flows h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .flow-group { margin-bottom: 28px; }
+  .flow-group-title { font-size: 13px; font-weight: 600; color: #60a5fa; margin-bottom: 10px; }
+  .flow {
+    display: flex; align-items: center; gap: 0; margin-bottom: 6px;
+    font-size: 13px; color: #cbd5e1; flex-wrap: wrap;
+  }
+  .flow-node {
+    background: #1a2332; padding: 4px 12px; border-radius: 6px;
+    font-weight: 500; white-space: nowrap;
+  }
+  .flow-arrow { color: #4a5568; padding: 0 6px; font-size: 16px; }
+  .flow-label { font-size: 11px; color: #8892a4; margin-left: 12px; font-style: italic; }
+  .flow-protocol { font-size: 10px; color: #f59e0b; background: #451a03; padding: 1px 6px; border-radius: 4px; margin: 0 4px; }
+
+  /* ── Concept Section ── */
+  .concepts { margin-top: 56px; }
+  .concepts h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .concept-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .concept {
+    background: #111827; border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px;
+  }
+  .concept h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #f0f4f8; }
+  .concept p { font-size: 13px; color: #8892a4; line-height: 1.6; }
+  .concept .example { font-size: 12px; color: #7dd3fc; margin-top: 8px; background: #1a2332; padding: 8px 12px; border-radius: 6px; line-height: 1.5; }
+
+  /* ── Decision Table ── */
+  .decisions { margin-top: 56px; }
+  .decisions h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .decision-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .decision-table th {
+    text-align: left; padding: 10px 16px; background: #1a2332;
+    color: #8892a4; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .decision-table td { padding: 10px 16px; border-bottom: 1px solid #1e2a3a; color: #cbd5e1; }
+  .decision-table tr:hover td { background: #111827; }
+  .good { color: #4ade80; }
+  .bad { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1>Benjamin 系統架構圖</h1>
+<p class="subtitle">整體架構、元件關聯、資料流向、以及背後的設計觀念</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Railway 雲端</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Mac 本機</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Win11 Parallels</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>外部服務</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f472b6"></div>資料儲存</div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="arch">
+
+  <!-- Layer 1: User -->
+  <div class="layer">
+    <div class="layer-label">使用者入口</div>
+    <div class="layer-content">
+      <div class="node cloud">
+        <div class="node-header">
+          <div class="node-icon">B</div>
+          <div class="node-name">Benjamin Dashboard</div>
+          <span class="tag">前端</span>
+        </div>
+        <div class="node-desc">
+          專案管理介面。左側專案列表、右側顯示專案狀態/操作介面（iframe）。<br>
+          本身是一個 HTML 檔，由後端直接回傳。
+        </div>
+        <div class="node-meta">
+          <span>路由 <code>GET /dashboard</code></span>
+          <span>檔案 <code>projects/balian-quant/dashboard.html</code></span>
+        </div>
+      </div>
+      <div class="node external">
+        <div class="node-header">
+          <div class="node-icon">T</div>
+          <div class="node-name">Telegram Bot</div>
+          <span class="tag">通知</span>
+        </div>
+        <div class="node-desc">
+          使用者的行動通知入口。接收任務完成、選股結果、漲停警訊、每日日報等推播。也可用指令互動。
+        </div>
+        <div class="node-meta">
+          <span>Bot <code>@balian_reminder_bot</code></span>
+          <span>指令 <code>/add /done /list /today /status</code></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 2: Backend Services -->
+  <div class="layer">
+    <div class="layer-label">後端服務（Application Layer）</div>
+    <div class="layer-content">
+      <div class="node cloud">
+        <div class="node-header">
+          <div class="node-icon">Q</div>
+          <div class="node-name">Balian Quant API</div>
+          <span class="tag">主服務</span>
+        </div>
+        <div class="node-desc">
+          核心後端。處理量化分析、選股、籌碼、回測、專案管理 CRUD、Telegram 通知發送。
+        </div>
+        <div class="node-meta">
+          <span>框架 <code>FastAPI (Python)</code></span>
+          <span>部署 <code>Railway / balian-quant</code></span>
+          <span>網址 <code>balian-quant-production.up.railway.app</code></span>
+          <span>路徑 <code>projects/balian-quant/</code></span>
+          <span>主要檔案：</span>
+          <span>&nbsp;&nbsp;<code>main.py</code> API 路由入口</span>
+          <span>&nbsp;&nbsp;<code>notifier.py</code> Telegram 推播</span>
+          <span>&nbsp;&nbsp;<code>strategy.py</code> 技術策略</span>
+          <span>&nbsp;&nbsp;<code>backtest.py</code> 回測引擎</span>
+          <span>&nbsp;&nbsp;<code>screener.py</code> 批次選股</span>
+          <span>&nbsp;&nbsp;<code>claude_analyst.py</code> AI 評語</span>
+          <span>&nbsp;&nbsp;<code>xq_client.py</code> 資料來源整合</span>
+        </div>
+      </div>
+      <div class="node cloud">
+        <div class="node-header">
+          <div class="node-icon">R</div>
+          <div class="node-name">Reminder Bot (gent)</div>
+          <span class="tag">機器人</span>
+        </div>
+        <div class="node-desc">
+          Telegram 互動機器人。管理待辦事項、每日 08:00 推送日報、查詢系統連線狀態。
+        </div>
+        <div class="node-meta">
+          <span>框架 <code>python-telegram-bot</code></span>
+          <span>部署 <code>Railway / charming-fulfillment</code></span>
+          <span>GitHub <code>balianqbar-eng/gent</code></span>
+          <span>路徑 <code>projects/reminder-bot/</code></span>
+        </div>
+      </div>
+      <div class="node local-mac">
+        <div class="node-header">
+          <div class="node-icon">V</div>
+          <div class="node-name">Video2Slides</div>
+          <span class="tag">本機</span>
+        </div>
+        <div class="node-desc">
+          影片轉學習簡報。下載影片、Whisper 轉錄、Gemini 分析、自動產 Google Slides + PPTX/PDF。
+        </div>
+        <div class="node-meta">
+          <span>框架 <code>FastAPI (Python)</code></span>
+          <span>位置 <code>Mac 本機 :8001</code></span>
+          <span>對外 <code>cloudflared quick tunnel</code></span>
+          <span>路徑 <code>video2slides/</code></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 2.5: Local Services -->
+  <div class="layer">
+    <div class="layer-label">本地服務（Bridge Layer）</div>
+    <div class="layer-content">
+      <div class="node local-mac">
+        <div class="node-header">
+          <div class="node-icon">S</div>
+          <div class="node-name">Stock Server</div>
+          <span class="tag">Mac</span>
+        </div>
+        <div class="node-desc">
+          戰情儀表板後端。多股即時監控、策略訊號、XQ 自選清單、Win11 控制。
+        </div>
+        <div class="node-meta">
+          <span>位置 <code>Mac :8000</code></span>
+          <span>IP <code>100.106.1.28 (Tailscale)</code></span>
+          <span>路徑 <code>stock_server.py + dashboard.html</code></span>
+        </div>
+      </div>
+      <div class="node win11">
+        <div class="node-header">
+          <div class="node-icon">X</div>
+          <div class="node-name">XQ Bridge</div>
+          <span class="tag">Win11</span>
+        </div>
+        <div class="node-desc">
+          Windows 上的 XQLite COM 橋接。透過 Excel RTD 取即時報價，提供 REST API 給 Mac/Railway 呼叫。
+        </div>
+        <div class="node-meta">
+          <span>位置 <code>Win11 Parallels :8000</code></span>
+          <span>IP <code>100.107.36.65 (Tailscale)</code></span>
+          <span>路徑 <code>xq_bridge/server.py</code></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 3: Data -->
+  <div class="layer">
+    <div class="layer-label">資料來源（Data Layer）</div>
+    <div class="layer-content">
+      <div class="node db">
+        <div class="node-header">
+          <div class="node-icon">P</div>
+          <div class="node-name">PostgreSQL</div>
+          <span class="tag">資料庫</span>
+        </div>
+        <div class="node-desc">Railway 提供的 PostgreSQL。目前只有 reminder-bot 使用，存待辦事項。</div>
+        <div class="node-meta"><span>用途 <code>todos table (gent)</code></span></div>
+      </div>
+      <div class="node db">
+        <div class="node-header">
+          <div class="node-icon">J</div>
+          <div class="node-name">projects.json</div>
+          <span class="tag">檔案</span>
+        </div>
+        <div class="node-desc">Benjamin 的專案資料。JSON 檔案儲存，隨部署打包。</div>
+        <div class="node-meta"><span>用途 <code>專案清單 + features + health URL</code></span></div>
+      </div>
+      <div class="node external">
+        <div class="node-header">
+          <div class="node-icon">A</div>
+          <div class="node-name">外部 API</div>
+          <span class="tag">第三方</span>
+        </div>
+        <div class="node-desc">FinMind（歷史K棒/法人/融資）、永豐 Shioaji（即時報價）、TWSE（股票名稱/清單）、Gemini（AI 分析）、Claude（評語）、Google Slides API。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="flows">
+<h2>資料流向</h2>
+
+<div class="flow-group">
+  <div class="flow-group-title">1. 使用者打開 Benjamin Dashboard</div>
+  <div class="flow">
+    <span class="flow-node">瀏覽器</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">HTTPS</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Railway: GET /dashboard</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">回傳 dashboard.html</span>
+  </div>
+  <div class="flow">
+    <span class="flow-node">瀏覽器 JS</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">fetch</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">GET /api/projects</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">讀取 projects.json</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">渲染專案列表</span>
+  </div>
+  <div class="flow">
+    <span class="flow-node">瀏覽器 JS</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">fetch</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">各專案 health_url</span>
+    <span class="flow-label">直接從瀏覽器 ping，不經 Railway（因為 Tailscale IP 雲端打不到）</span>
+  </div>
+</div>
+
+<div class="flow-group">
+  <div class="flow-group-title">2. 任務完成 -> Telegram 通知（你剛加的功能）</div>
+  <div class="flow">
+    <span class="flow-node">瀏覽器</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">PUT</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Railway: /api/projects/{id}</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">比對 features done 狀態</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">notifier._send()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">HTTPS</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Telegram API</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">手機收到推播</span>
+  </div>
+</div>
+
+<div class="flow-group">
+  <div class="flow-group-title">3. 個股分析</div>
+  <div class="flow">
+    <span class="flow-node">使用者</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">GET /analyse/2330</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">xq_client.kbar()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">FinMind API</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">取歷史 K 棒</span>
+  </div>
+  <div class="flow">
+    <span class="flow-node">K 棒資料</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">strategy.generate_signals()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">backtest.run()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">claude_analyst.interpret()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">notifier.notify_analyse()</span>
+  </div>
+</div>
+
+<div class="flow-group">
+  <div class="flow-group-title">4. 即時報價（XQ Bridge 路徑）</div>
+  <div class="flow">
+    <span class="flow-node">Mac Stock Server</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">Tailscale</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Win11 XQ Bridge :8000</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">COM/RTD</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">XQLite</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">即時報價 JSON</span>
+  </div>
+</div>
+
+<div class="flow-group">
+  <div class="flow-group-title">5. 影音轉簡報</div>
+  <div class="flow">
+    <span class="flow-node">Benjamin iframe</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">cloudflared</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Mac :8001 POST /jobs</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">yt-dlp 下載</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Whisper 轉錄</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Gemini 分析</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Google Slides API</span>
+  </div>
+</div>
+
+<div class="flow-group">
+  <div class="flow-group-title">6. Reminder Bot 日報</div>
+  <div class="flow">
+    <span class="flow-node">APScheduler 08:00</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">db.get_todos()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-protocol">PostgreSQL</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">build_digest()</span>
+    <span class="flow-arrow">--></span>
+    <span class="flow-node">Telegram API</span>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="concepts">
+<h2>你的系統用到的架構觀念</h2>
+
+<div class="concept-grid">
+  <div class="concept">
+    <h3>1. 前後端分離 (Frontend-Backend Separation)</h3>
+    <p>前端（dashboard.html）和後端（main.py）各自獨立。前端透過 fetch 呼叫 API 取資料，後端只回 JSON。兩邊可以各自修改，互不影響。</p>
+    <div class="example">你的實作：dashboard.html 用 fetch("/api/projects") 取資料，main.py 只負責 JSON CRUD</div>
+  </div>
+
+  <div class="concept">
+    <h3>2. 微服務 (Microservices)</h3>
+    <p>系統拆成多個獨立服務，各自部署、各自重啟不影響彼此。每個服務只做一件事。</p>
+    <div class="example">你的實作：balian-quant（量化分析）、gent（提醒機器人）、video2slides（影片轉簡報）是三個獨立服務，掛一個不影響其他</div>
+  </div>
+
+  <div class="concept">
+    <h3>3. Bridge / Adapter 模式</h3>
+    <p>當兩個系統語言或環境不同時，中間放一個「翻譯層」。把專有格式轉成通用格式（REST JSON）。</p>
+    <div class="example">你的實作：XQ Bridge 把 Windows COM/RTD 協定轉成 REST API，讓 Mac 和 Railway 都能用 HTTP 取報價</div>
+  </div>
+
+  <div class="concept">
+    <h3>4. Webhook vs Polling</h3>
+    <p><strong>Polling</strong>：定時去問「好了沒？」（health check 每 30 秒 ping）。<br><strong>Webhook</strong>：事情發生時主動通知你（Telegram bot 用 webhook 接收訊息）。Webhook 更即時、更省資源。</p>
+    <div class="example">你的實作：gent 用 webhook 模式接收 Telegram 訊息；Benjamin 用 polling 做 health check</div>
+  </div>
+
+  <div class="concept">
+    <h3>5. 事件驅動通知 (Event-Driven Notification)</h3>
+    <p>不是定時檢查，而是「狀態改變時」才觸發動作。省運算、即時性高。</p>
+    <div class="example">你剛加的功能：update_project 時比對 done 新舊值，變成 true 才發 Telegram，不是每分鐘去掃 projects.json</div>
+  </div>
+
+  <div class="concept">
+    <h3>6. Tunnel / 內網穿透</h3>
+    <p>本機服務（沒有公開 IP）透過隧道對外提供服務。常見方案：Tailscale（VPN 互連）、cloudflared（HTTP tunnel）、ngrok。</p>
+    <div class="example">你的實作：Mac <-> Win11 用 Tailscale 互連；video2slides 用 cloudflared 給 Benjamin iframe 嵌入</div>
+  </div>
+
+  <div class="concept">
+    <h3>7. 單一資料來源 (Single Source of Truth)</h3>
+    <p>同一份資料只存一個地方，其他地方都來這裡讀。避免資料不一致。</p>
+    <div class="example">你的實作：專案資料統一存 projects.json，dashboard 和 API 都讀同一份；待辦統一存 PostgreSQL</div>
+  </div>
+
+  <div class="concept">
+    <h3>8. Pipeline 模式</h3>
+    <p>把複雜任務拆成一連串步驟，每步輸出是下步輸入。好處：每步可獨立測試、可加快取跳過已完成的步驟。</p>
+    <div class="example">你的實作：video2slides 的 下載 -> 抽音訊 -> 轉錄 -> 場景偵測 -> AI 分析 -> 生成 Slides -> 匯出</div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<div class="decisions" style="margin-top:56px; margin-bottom:80px;">
+<h2>你做過的架構決策與取捨</h2>
+<table class="decision-table">
+  <tr>
+    <th>決策</th>
+    <th>你選的</th>
+    <th>另一個選項</th>
+    <th>取捨原因</th>
+  </tr>
+  <tr>
+    <td>即時報價來源</td>
+    <td class="good">XQ Bridge + Tailscale</td>
+    <td>純雲端券商 API</td>
+    <td>XQ 有自選組合和 RTD 即時流，券商 API 有延遲限制</td>
+  </tr>
+  <tr>
+    <td>歷史K棒</td>
+    <td class="good">FinMind 免費 API</td>
+    <td>XQ COM 或爬蟲</td>
+    <td>XQ RTD 只有即時沒有歷史；爬蟲不穩定</td>
+  </tr>
+  <tr>
+    <td>專案資料儲存</td>
+    <td>projects.json 檔案</td>
+    <td class="good">資料庫</td>
+    <td>快速啟動、簡單，但重新部署會覆蓋資料（未來可能要改 DB）</td>
+  </tr>
+  <tr>
+    <td>AI 內容分析</td>
+    <td class="good">Gemini 免費層</td>
+    <td>Claude API（付費）</td>
+    <td>Max 訂閱不含 API 額度，Gemini 完全免費</td>
+  </tr>
+  <tr>
+    <td>Health Check</td>
+    <td class="good">瀏覽器端 fetch</td>
+    <td>後端 requests.get()</td>
+    <td>Railway 雲端打不到 Tailscale 私有 IP，只有瀏覽器（在你的區網）能 ping</td>
+  </tr>
+  <tr>
+    <td>video2slides 對外</td>
+    <td>cloudflared quick tunnel</td>
+    <td class="good">Railway 部署 / named tunnel</td>
+    <td>quick tunnel 免設定但重啟會變 URL（暫時方案）</td>
+  </tr>
+  <tr>
+    <td>Mac <-> Win11 連線</td>
+    <td class="good">Tailscale VPN</td>
+    <td>ngrok / port forwarding</td>
+    <td>固定 IP、不怕重啟、雙向互通、免費</td>
+  </tr>
+</table>
+</div>
+
+</body>
+</html>

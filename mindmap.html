@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balian 專案心智圖</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0f0f1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+canvas { display: block; }
+#tooltip {
+  position: fixed;
+  background: rgba(20, 20, 40, 0.95);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: #e0e0e0;
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  max-width: 300px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 100;
+  line-height: 1.5;
+}
+#tooltip.show { opacity: 1; }
+#controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+#controls button {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #aaa;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+#controls button:hover { background: rgba(255,255,255,0.15); color: #fff; }
+#title {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  z-index: 10;
+}
+</style>
+</head>
+<body>
+<div id="title">Balian Project Mindmap</div>
+<canvas id="canvas"></canvas>
+<div id="tooltip"></div>
+<div id="controls">
+  <button onclick="resetView()">Reset</button>
+  <button onclick="toggleAnimation()">Pause</button>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+let W, H, dpr;
+let panX = 0, panY = 0, scale = 1;
+let dragging = false, dragStartX, dragStartY, panStartX, panStartY;
+let animating = true;
+let time = 0;
+let hoveredNode = null;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const COLORS = {
+  center: '#a78bfa',
+  quant: '#f472b6',
+  benjamin: '#fb923c',
+  video: '#34d399',
+  xq: '#38bdf8',
+  swift: '#fbbf24',
+  report: '#c084fc',
+  docs: '#94a3b8',
+  bot: '#f87171',
+};
+
+const data = {
+  id: 'root', label: 'Balian', color: COLORS.center,
+  desc: '量化交易 + 專案管理 + 工具集',
+  children: [
+    {
+      id: 'dashboard', label: '股票儀表板', color: COLORS.quant,
+      desc: 'dashboard.html + stock_server.py\nFastAPI 後端 (port 8000)\n本地執行，支援外網存取',
+      children: [
+        { id: 'tab-fund', label: '基本面', color: COLORS.quant, desc: '個股基本資料查詢' },
+        { id: 'tab-chip', label: '籌碼面', color: COLORS.quant, desc: '法人買賣超資訊' },
+        { id: 'tab-tech', label: '技術面', color: COLORS.quant, desc: '技術指標分析' },
+        { id: 'tab-kline', label: 'K線圖', color: COLORS.quant, desc: 'K線圖表呈現' },
+        { id: 'tab-strategy', label: '策略', color: COLORS.quant,
+          desc: '3分K當沖訊號\nKDJ + MACD + 布林\n條件明細 + 執行/關閉監控' },
+        { id: 'tab-pnl', label: '損益', color: COLORS.quant, desc: '損益紀錄追蹤' },
+        { id: 'tab-news', label: '消息面', color: COLORS.quant, desc: 'iframe 嵌入新聞' },
+        { id: 'monitor', label: '多股監控', color: COLORS.quant,
+          desc: '10 格子頁 + 母頁詳情\n即時訊號、價格、指標\n手機版 2 欄 / 桌面 5 欄' },
+        { id: 'smart-order', label: '智慧單', color: COLORS.quant,
+          desc: '停損/停利自動送單\nauto, stop_loss_pct, take_profit_pct' },
+      ]
+    },
+    {
+      id: 'benjamin', label: 'Benjamin', color: COLORS.benjamin,
+      desc: '專案管理介面\nRailway 雲端部署\nTelegram 通知整合',
+      children: [
+        { id: 'bq', label: 'balian-quant', color: COLORS.benjamin,
+          desc: 'FastAPI Dashboard\nRailway: balian-quant-production\n選股 / 回測 / Claude 評語',
+          children: [
+            { id: 'bq-strategy', label: 'strategy.py', color: COLORS.benjamin, desc: 'MA5/20 黃金交叉 + RSI 日線策略' },
+            { id: 'bq-screener', label: 'screener.py', color: COLORS.benjamin, desc: '批次選股，從 XQ bridge 拉 K 棒' },
+            { id: 'bq-backtest', label: 'backtest.py', color: COLORS.benjamin, desc: '單股回測 (MDD、勝率、逐筆)' },
+            { id: 'bq-claude', label: 'claude_analyst', color: COLORS.benjamin, desc: 'Claude Sonnet 生成個股評語' },
+            { id: 'bq-notify', label: 'notifier.py', color: COLORS.benjamin, desc: 'Telegram 通知\n漲停/大戶/選股/分析' },
+            { id: 'bq-monitor', label: 'monitors/', color: COLORS.benjamin, desc: 'limit_up.py 漲停鎖定\nbig_player.py 大戶買賣力' },
+          ]
+        },
+        { id: 'gent', label: 'reminder-bot', color: COLORS.bot,
+          desc: 'Telegram 待辦機器人 (gent)\npython-telegram-bot + APScheduler\nPostgreSQL (Railway)\n每天 8:00 日報',
+          children: [
+            { id: 'gent-bot', label: 'bot.py', color: COLORS.bot, desc: '/add /done /list /today /status' },
+            { id: 'gent-db', label: 'db.py', color: COLORS.bot, desc: 'PostgreSQL todos table' },
+          ]
+        },
+      ]
+    },
+    {
+      id: 'xq', label: 'XQ Bridge', color: COLORS.xq,
+      desc: 'Win11 Parallels 上的 XQLite 橋接\nCOM 物件取即時報價\nngrok 對外暴露',
+      children: [
+        { id: 'xq-server', label: 'xq_server.py', color: COLORS.xq,
+          desc: 'port 8089\n/quote, /batch, /realtime\n/kbar (TWSE API)\n/universe' },
+        { id: 'xq-bridge', label: 'xq_bridge.py', color: COLORS.xq, desc: '本地橋接模組' },
+        { id: 'xq-bat', label: '啟動.bat', color: COLORS.xq, desc: 'Windows 批次啟動腳本' },
+      ]
+    },
+    {
+      id: 'v2s', label: 'Video2Slides', color: COLORS.video,
+      desc: '影音轉學習簡報 pipeline\nserver.py 提供 Web UI\n完整 pipeline 處理流程',
+      children: [
+        { id: 'v2s-dl', label: 'downloader', color: COLORS.video, desc: '影片下載模組' },
+        { id: 'v2s-audio', label: 'audio_extractor', color: COLORS.video, desc: '音訊擷取' },
+        { id: 'v2s-trans', label: 'transcriber', color: COLORS.video, desc: '語音轉文字' },
+        { id: 'v2s-scene', label: 'scene_detector', color: COLORS.video, desc: '場景偵測 / 截圖' },
+        { id: 'v2s-analyze', label: 'content_analyzer', color: COLORS.video, desc: '內容分析 (AI)' },
+        { id: 'v2s-gen', label: 'slides_generator', color: COLORS.video, desc: '簡報產生器' },
+      ]
+    },
+    {
+      id: 'swift', label: 'StockDashboard', color: COLORS.swift,
+      desc: 'SwiftUI 原生 App\nmacOS / iOS 股票儀表板',
+    },
+    {
+      id: 'reports', label: '分析報告', color: COLORS.report,
+      desc: 'Claude 產生的 HTML 分析報告',
+      children: [
+        { id: 'r1', label: '藥事管理商', color: COLORS.report, desc: '藥事管理商市場分析.html' },
+        { id: 'r2', label: '長照3.0', color: COLORS.report, desc: '長照3.0商業模式分析.html' },
+        { id: 'r3', label: '樂齡宅', color: COLORS.report, desc: '樂齡宅藥事管理商業模式.html' },
+      ]
+    },
+    {
+      id: 'docs', label: '文件', color: COLORS.docs,
+      desc: '專案相關文件與紀錄',
+      children: [
+        { id: 'd1', label: '開盤前置清單', color: COLORS.docs, desc: '每日開盤前檢查項目' },
+        { id: 'd2', label: '量化學習筆記', color: COLORS.docs, desc: '量化交易學習筆記.pdf' },
+        { id: 'd3', label: '工作日誌', color: COLORS.docs, desc: '工作日誌.md' },
+      ]
+    },
+  ]
+};
+
+class Node {
+  constructor(data, parent, depth, angleStart, angleEnd) {
+    this.id = data.id;
+    this.label = data.label;
+    this.color = data.color;
+    this.desc = data.desc || '';
+    this.parent = parent;
+    this.depth = depth;
+    this.children = [];
+    this.expanded = depth < 2;
+    this.targetX = 0;
+    this.targetY = 0;
+    this.x = parent ? parent.x : W / 2;
+    this.y = parent ? parent.y : H / 2;
+    this.radius = depth === 0 ? 42 : depth === 1 ? 28 : depth === 2 ? 18 : 14;
+    this.angleStart = angleStart;
+    this.angleEnd = angleEnd;
+    this.pulsePhase = Math.random() * Math.PI * 2;
+
+    if (data.children) {
+      const count = data.children.length;
+      const span = angleEnd - angleStart;
+      data.children.forEach((child, i) => {
+        const as = angleStart + (span / count) * i;
+        const ae = angleStart + (span / count) * (i + 1);
+        this.children.push(new Node(child, this, depth + 1, as, ae));
+      });
+    }
+  }
+
+  layout() {
+    if (this.depth === 0) {
+      this.targetX = W / 2;
+      this.targetY = H / 2;
+    }
+    if (!this.expanded) return;
+
+    const dist = this.depth === 0 ? 200 : this.depth === 1 ? 140 : 100;
+    const count = this.children.length;
+    const span = this.angleEnd - this.angleStart;
+
+    this.children.forEach((child, i) => {
+      const angle = this.angleStart + (span / (count)) * (i + 0.5);
+      child.targetX = this.targetX + Math.cos(angle) * dist;
+      child.targetY = this.targetY + Math.sin(angle) * dist;
+      child.layout();
+    });
+  }
+
+  update() {
+    this.x += (this.targetX - this.x) * 0.08;
+    this.y += (this.targetY - this.y) * 0.08;
+    if (this.expanded) {
+      this.children.forEach(c => c.update());
+    }
+  }
+
+  drawEdges() {
+    if (!this.expanded) return;
+    this.children.forEach(child => {
+      ctx.save();
+      ctx.translate(panX, panY);
+      ctx.scale(scale, scale);
+      const grad = ctx.createLinearGradient(this.x, this.y, child.x, child.y);
+      grad.addColorStop(0, this.color + '60');
+      grad.addColorStop(1, child.color + '30');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = this.depth === 0 ? 2.5 : 1.5;
+      ctx.beginPath();
+      const mx = (this.x + child.x) / 2;
+      const my = (this.y + child.y) / 2;
+      const offset = (child.x - this.x) * 0.15;
+      ctx.moveTo(this.x, this.y);
+      ctx.quadraticCurveTo(mx + offset, my - offset, child.x, child.y);
+      ctx.stroke();
+      ctx.restore();
+      child.drawEdges();
+    });
+  }
+
+  draw(mouseX, mouseY) {
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(scale, scale);
+
+    const pulse = animating ? Math.sin(time * 2 + this.pulsePhase) * 0.12 : 0;
+    const r = this.radius * (1 + pulse * 0.3);
+    const isHovered = this === hoveredNode;
+
+    const glow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r * 2.5);
+    glow.addColorStop(0, this.color + (isHovered ? '40' : '18'));
+    glow.addColorStop(1, this.color + '00');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    const grad = ctx.createRadialGradient(this.x - r * 0.3, this.y - r * 0.3, 0, this.x, this.y, r);
+    grad.addColorStop(0, this.color + 'ee');
+    grad.addColorStop(1, this.color + '99');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isHovered) {
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const fontSize = this.depth === 0 ? 15 : this.depth === 1 ? 12 : 10;
+    ctx.font = `600 ${fontSize}px -apple-system, sans-serif`;
+
+    if (this.depth === 0) {
+      ctx.fillText(this.label, this.x, this.y);
+    } else {
+      ctx.fillText(this.label, this.x, this.y + r + 14);
+    }
+
+    if (this.children.length > 0 && !this.expanded) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(`+${this.children.length}`, this.x, this.y + r + 26);
+    }
+
+    ctx.restore();
+
+    if (this.expanded) {
+      this.children.forEach(c => c.draw(mouseX, mouseY));
+    }
+  }
+
+  hitTest(mx, my) {
+    const sx = (mx - panX) / scale;
+    const sy = (my - panY) / scale;
+    const dx = sx - this.x;
+    const dy = sy - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < this.radius + 5) return this;
+
+    if (this.expanded) {
+      for (let i = this.children.length - 1; i >= 0; i--) {
+        const hit = this.children[i].hitTest(mx, my);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  }
+
+  getAllNodes() {
+    let nodes = [this];
+    if (this.expanded) {
+      this.children.forEach(c => { nodes = nodes.concat(c.getAllNodes()); });
+    }
+    return nodes;
+  }
+}
+
+const root = new Node(data, null, 0, 0, Math.PI * 2);
+root.layout();
+
+let mouseX = 0, mouseY = 0;
+
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  const hit = root.hitTest(mouseX, mouseY);
+  hoveredNode = hit;
+  canvas.style.cursor = hit ? 'pointer' : (dragging ? 'grabbing' : 'grab');
+
+  if (hit && hit.desc) {
+    tooltip.innerHTML = `<strong>${hit.label}</strong><br>${hit.desc.replace(/\n/g, '<br>')}`;
+    tooltip.className = 'show';
+    let tx = e.clientX + 15;
+    let ty = e.clientY + 15;
+    if (tx + 300 > W) tx = e.clientX - 315;
+    if (ty + 150 > H) ty = e.clientY - 150;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+  } else {
+    tooltip.className = '';
+  }
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  dragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  panStartX = panX;
+  panStartY = panY;
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+    const hit = root.hitTest(e.clientX, e.clientY);
+    if (hit && hit.children.length > 0 && hit.depth > 0) {
+      hit.expanded = !hit.expanded;
+      root.layout();
+    }
+  }
+  dragging = false;
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging) {
+    panX = panStartX + (e.clientX - dragStartX);
+    panY = panStartY + (e.clientY - dragStartY);
+  }
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
+  const newScale = Math.max(0.3, Math.min(3, scale * zoomFactor));
+  const mx = e.clientX;
+  const my = e.clientY;
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+}, { passive: false });
+
+canvas.addEventListener('mouseleave', () => {
+  tooltip.className = '';
+  hoveredNode = null;
+});
+
+function drawBackground() {
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if (animating) {
+    for (let i = 0; i < 60; i++) {
+      const x = ((i * 137.5 + time * 3) % W);
+      const y = ((i * 97.3 + time * 1.5) % H);
+      const alpha = 0.15 + Math.sin(time + i) * 0.1;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function animate() {
+  if (animating) time += 0.008;
+  drawBackground();
+  root.update();
+  root.drawEdges();
+  root.draw(mouseX, mouseY);
+  requestAnimationFrame(animate);
+}
+
+function resetView() {
+  panX = 0; panY = 0; scale = 1;
+  root.layout();
+}
+
+function toggleAnimation() {
+  animating = !animating;
+  document.querySelector('#controls button:nth-child(2)').textContent = animating ? 'Pause' : 'Play';
+}
+
+animate();
+</script>
+</body>
+</html>
