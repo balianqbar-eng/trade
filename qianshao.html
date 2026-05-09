@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>錢哨 — 策略管理</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+.card { background: #1e293b; border-radius: 12px; padding: 16px; }
+.card-sm { background: #1e293b; border-radius: 8px; padding: 12px; }
+.strat-item { padding: 10px 14px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: all .2s; }
+.strat-item:hover { background: #334155; }
+.strat-item.active { background: #1e3a5f; border-color: #3b82f6; }
+.cat-tab { padding: 6px 16px; border-radius: 6px; cursor: pointer; color: #94a3b8; transition: all .2s; font-size: 0.875rem; border: 1px solid transparent; }
+.cat-tab.active { background: #334155; color: #e2e8f0; border-color: #475569; }
+.toggle { position: relative; width: 40px; height: 22px; border-radius: 11px; background: #475569; cursor: pointer; transition: background .2s; flex-shrink: 0; }
+.toggle.on { background: #3b82f6; }
+.toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.toggle.on::after { transform: translateX(18px); }
+.cond-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; }
+.cond-row:hover { background: rgba(255,255,255,0.03); }
+.input-sm { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; color: #e2e8f0; font-size: 0.8rem; width: 90px; text-align: center; }
+.input-sm:focus { outline: none; border-color: #3b82f6; }
+select.sel-sm { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 4px 8px; color: #e2e8f0; font-size: 0.8rem; }
+.badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 500; display: inline-block; }
+.badge-bull { background: rgba(239,68,68,0.15); color: #ef4444; }
+.badge-bear { background: rgba(34,197,94,0.15); color: #22c55e; }
+.badge-neutral { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.badge-safe { background: rgba(34,197,94,0.15); color: #22c55e; }
+.badge-warn { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.badge-danger { background: rgba(239,68,68,0.15); color: #ef4444; }
+.mode-tab { padding: 6px 18px; border-radius: 6px 6px 0 0; cursor: pointer; color: #64748b; font-size: 0.875rem; }
+.mode-tab.active { background: #1e293b; color: #e2e8f0; }
+.result-label { color: #64748b; font-size: 0.75rem; }
+.result-value { color: #e2e8f0; font-size: 0.875rem; font-weight: 500; }
+.key-price { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.key-price:last-child { border-bottom: none; }
+.btn { padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; transition: all .15s; cursor: pointer; }
+.btn-primary { background: #3b82f6; color: #fff; }
+.btn-primary:hover { background: #2563eb; }
+.btn-ghost { background: #334155; color: #e2e8f0; }
+.btn-ghost:hover { background: #475569; }
+</style>
+</head>
+<body class="p-4">
+<div class="max-w-[1400px] mx-auto">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-3">
+      <span class="text-blue-400 font-bold text-lg">錢哨 — 策略管理</span>
+      <span id="api-status" class="text-xs text-slate-500"></span>
+    </div>
+  </div>
+
+  <div class="flex gap-1">
+    <div class="mode-tab active" data-mode="edit"   onclick="switchMode('edit')">策略設定</div>
+    <div class="mode-tab"        data-mode="result" onclick="switchMode('result')">分析結果</div>
+    <div class="mode-tab"        data-mode="history" onclick="switchMode('history')">歷史紀錄</div>
+  </div>
+
+  <!-- ===== 策略設定 ===== -->
+  <div id="mode-edit" class="card" style="border-radius: 0 12px 12px 12px;">
+    <div class="flex gap-4" style="min-height: 520px;">
+      <!-- Left -->
+      <div class="w-56 flex-shrink-0 border-r border-slate-700 pr-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-medium text-slate-300">策略清單</span>
+          <button onclick="newStrategy()" class="text-blue-400 hover:text-blue-300 text-xl leading-none" title="新增策略">+</button>
+        </div>
+        <div id="stratList" class="space-y-1"></div>
+      </div>
+
+      <!-- Right -->
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-3 mb-4">
+          <input id="stratName" type="text" placeholder="策略名稱"
+            class="bg-transparent border-b border-slate-600 text-lg font-medium text-white focus:outline-none focus:border-blue-500 pb-1 w-64">
+          <div class="ml-auto flex gap-2 items-center">
+            <input id="analyseTicker" type="text" placeholder="股票代碼" value="2330"
+              class="input-sm" style="width:88px;">
+            <button class="btn btn-primary" onclick="runAnalyse()">執行分析</button>
+            <button class="btn btn-ghost"   onclick="saveStrategy()">儲存</button>
+            <button class="btn btn-ghost"   onclick="deleteStrategy()">刪除</button>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-4 border-b border-slate-700 pb-3" id="catTabs"></div>
+
+        <div id="condArea" class="space-y-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 分析結果 ===== -->
+  <div id="mode-result" class="card hidden" style="border-radius: 0 12px 12px 12px;">
+    <div id="resultArea" class="text-slate-400 text-sm py-8 text-center">尚未執行分析。請至「策略設定」選一個策略並點「執行分析」。</div>
+  </div>
+
+  <!-- ===== 歷史紀錄 ===== -->
+  <div id="mode-history" class="card hidden" style="border-radius: 0 12px 12px 12px;">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-slate-300">分析歷史</span>
+        <span id="historyCount" class="text-xs text-slate-500"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="histFilterTicker" type="text" placeholder="股票代碼"
+          class="input-sm" style="width:120px;text-align:left;">
+        <select id="histFilterDays" class="sel-sm">
+          <option value="7">最近 7 天</option>
+          <option value="30" selected>最近 30 天</option>
+          <option value="365">全部</option>
+        </select>
+        <button class="btn btn-ghost" onclick="loadHistory()">重整</button>
+      </div>
+    </div>
+    <div id="historyTable"></div>
+  </div>
+</div>
+
+<script>
+const API = (window.location.origin && window.location.origin.startsWith('http'))
+  ? window.location.origin : 'http://localhost:8000';
+
+// ── 條件範本：欄位定義（id 對應後端 ctx key） ───────────────────────────────
+const COND_TEMPLATE = {
+  fundamental: [
+    { field: 'PE',             label: '本益比 (PE)',     ops: ['<','>'],  def: 20, defOp: '<' },
+    { field: 'PB',             label: '股價淨值比 (PB)', ops: ['<','>'],  def: 3,  defOp: '<' },
+    { field: 'dividend_yield', label: '殖利率 (%)',      ops: ['>','<'],  def: 3,  defOp: '>' },
+    { field: 'EPS',            label: '近四季 EPS',      ops: ['>','<'],  def: 0,  defOp: '>' },
+  ],
+  technical: [
+    { field: 'ma_alignment', label: '均線排列',     ops: ['eq'], def: 'bull', defOp: 'eq', type: 'select',
+      options: ['bull','bear','none'] },
+    { field: 'k',   label: 'KD 指標 K 值',  ops: ['<','>'],   def: 30, defOp: '>' },
+    { field: 'rsi', label: 'RSI (14)',     ops: ['<','>'],   def: 50, defOp: '>' },
+  ],
+  chips: [
+    { field: 'foreign_buy_days',  label: '外資連買天數', ops: ['>=','<='], def: 3, defOp: '>=' },
+    { field: 'foreign_sell_days', label: '外資連賣天數', ops: ['>=','<='], def: 3, defOp: '>=' },
+    { field: 'trust_buy_days',    label: '投信連買天數', ops: ['>=','<='], def: 3, defOp: '>=' },
+    { field: 'trust_sell_days',   label: '投信連賣天數', ops: ['>=','<='], def: 3, defOp: '>=' },
+  ],
+  pattern: [
+    { field: 'w_bottom', label: 'W 底型態', ops: ['eq'], def: 'formed', defOp: 'eq', type: 'select', options: ['formed','forming','none'] },
+    { field: 'm_top',    label: 'M 頭型態', ops: ['eq'], def: 'none',   defOp: 'eq', type: 'select', options: ['formed','forming','none'] },
+  ],
+  volume: [
+    { field: 'vol_state',    label: '量價狀態', ops: ['=='], def: '量增價漲', defOp: '==', type: 'select', options: ['量增價漲','量增價跌','量縮價穩','量縮','爆量','持平'] },
+    { field: 'volume_ratio', label: '量比 (今/MA5)', ops: ['>','<'], def: 1.5, defOp: '>' },
+    { field: 'bias_ma20',    label: 'MA20 乖離率(%)', ops: ['<','>'], def: 10, defOp: '<' },
+  ],
+};
+
+const CAT_LABELS = {
+  fundamental: '基本面', technical: '技術面', chips: '籌碼面', pattern: '型態分析', volume: '量價分析',
+};
+
+// ── State ───────────────────────────────────────────────────────────────────
+let strategies = [];
+let currentStratId = null;
+let activeCat = 'fundamental';
+let lastResult = null;
+
+// ── HTTP ────────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(`${r.status}: ${txt}`);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+async function init() {
+  renderCatTabs();
+  try {
+    await loadStrategies();
+    document.getElementById('api-status').textContent = '已連線';
+    document.getElementById('api-status').className = 'text-xs text-emerald-400';
+  } catch (e) {
+    document.getElementById('api-status').textContent = '無法連線 API：' + e.message;
+    document.getElementById('api-status').className = 'text-xs text-red-400';
+  }
+}
+
+// ── Mode ────────────────────────────────────────────────────────────────────
+function switchMode(mode) {
+  ['edit','result','history'].forEach(m =>
+    document.getElementById('mode-' + m).classList.toggle('hidden', m !== mode));
+  document.querySelectorAll('.mode-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.mode === mode));
+  if (mode === 'history') loadHistory();
+}
+
+// ── Strategy List ───────────────────────────────────────────────────────────
+async function loadStrategies() {
+  strategies = await api('GET', '/qianshao/strategies');
+  renderStratList();
+  if (strategies.length && !currentStratId) selectStrat(strategies[0].id);
+  else if (currentStratId) {
+    const s = strategies.find(x => x.id === currentStratId);
+    if (s) loadStratIntoForm(s); else newStrategy();
+  } else newStrategy();
+}
+
+function renderStratList() {
+  const el = document.getElementById('stratList');
+  if (!strategies.length) {
+    el.innerHTML = '<div class="text-xs text-slate-500 px-2 py-2">尚無策略，點 + 新增</div>';
+    return;
+  }
+  el.innerHTML = strategies.map(s => {
+    const enabled = countEnabled(s.conditions);
+    return `<div class="strat-item ${s.id === currentStratId ? 'active' : ''}" onclick="selectStrat('${s.id}')">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">${escapeHtml(s.name)}</span>
+      </div>
+      <div class="text-xs text-slate-500 mt-1">已啟用 ${enabled} 個條件</div>
+    </div>`;
+  }).join('');
+}
+
+function countEnabled(conds) {
+  let n = 0;
+  for (const cat of Object.keys(COND_TEMPLATE)) {
+    (conds?.[cat] || []).forEach(c => { if (c.enabled) n++; });
+  }
+  return n;
+}
+
+function selectStrat(id) {
+  currentStratId = id;
+  const s = strategies.find(x => x.id === id);
+  if (s) loadStratIntoForm(s);
+  renderStratList();
+}
+
+function newStrategy() {
+  currentStratId = null;
+  const blank = { id: null, name: '新策略', conditions: emptyCond(), logic_notes: emptyNotes() };
+  loadStratIntoForm(blank);
+  document.querySelectorAll('.strat-item').forEach(e => e.classList.remove('active'));
+}
+
+function emptyCond() {
+  const o = {};
+  for (const cat of Object.keys(COND_TEMPLATE)) o[cat] = [];
+  return o;
+}
+function emptyNotes() { return { summary: '', entry_logic: '', exit_logic: '', remarks: '' }; }
+
+// ── Form ────────────────────────────────────────────────────────────────────
+function renderCatTabs() {
+  const el = document.getElementById('catTabs');
+  el.innerHTML = Object.keys(COND_TEMPLATE).map(cat =>
+    `<div class="cat-tab ${cat === activeCat ? 'active' : ''}" data-cat="${cat}" onclick="setActiveCat('${cat}')">${CAT_LABELS[cat]}</div>`
+  ).join('');
+}
+
+function setActiveCat(cat) {
+  activeCat = cat;
+  renderCatTabs();
+  renderConds();
+}
+
+function loadStratIntoForm(s) {
+  document.getElementById('stratName').value = s.name || '';
+  // 把 saved conditions 套用到 template
+  window._formState = {};
+  for (const cat of Object.keys(COND_TEMPLATE)) {
+    window._formState[cat] = COND_TEMPLATE[cat].map(t => {
+      const saved = (s.conditions?.[cat] || []).find(x => x.field === t.field);
+      return {
+        ...t,
+        enabled:  saved?.enabled  ?? false,
+        operator: saved?.operator ?? t.defOp,
+        value:    saved?.value    ?? t.def,
+      };
+    });
+  }
+  renderConds();
+}
+
+function renderConds() {
+  const items = window._formState[activeCat] || [];
+  const el = document.getElementById('condArea');
+  el.innerHTML = items.map((c, i) => {
+    const valInput = c.type === 'select'
+      ? `<select class="sel-sm" onchange="updateCond('${activeCat}', ${i}, 'value', this.value)">${
+          c.options.map(o => `<option ${o === c.value ? 'selected' : ''}>${o}</option>`).join('')
+        }</select>`
+      : `<input type="${typeof c.value === 'number' ? 'number' : 'text'}" value="${c.value}" step="0.1"
+          class="input-sm" onchange="updateCond('${activeCat}', ${i}, 'value', this.value)">`;
+    const opSel = c.ops.length === 1
+      ? `<span class="text-xs text-slate-500 px-2">${c.ops[0]}</span>`
+      : `<select class="sel-sm" onchange="updateCond('${activeCat}', ${i}, 'operator', this.value)">${
+          c.ops.map(o => `<option ${o === c.operator ? 'selected' : ''}>${o}</option>`).join('')
+        }</select>`;
+    return `<div class="cond-row">
+      <div class="toggle ${c.enabled ? 'on' : ''}" onclick="toggleCond('${activeCat}', ${i})"></div>
+      <span class="text-sm flex-1">${c.label}</span>
+      ${opSel}
+      ${valInput}
+    </div>`;
+  }).join('');
+}
+
+function toggleCond(cat, i) {
+  window._formState[cat][i].enabled = !window._formState[cat][i].enabled;
+  renderConds();
+}
+
+function updateCond(cat, i, key, val) {
+  const cur = window._formState[cat][i];
+  if (key === 'value' && cur.type !== 'select') {
+    const num = parseFloat(val);
+    cur.value = isNaN(num) ? val : num;
+  } else {
+    cur[key] = val;
+  }
+}
+
+function collectConditions() {
+  const out = {};
+  for (const cat of Object.keys(COND_TEMPLATE)) {
+    out[cat] = window._formState[cat].map(c => ({
+      field: c.field, operator: c.operator, value: c.value, enabled: !!c.enabled,
+    }));
+  }
+  return out;
+}
+
+// ── CRUD ────────────────────────────────────────────────────────────────────
+async function saveStrategy() {
+  const name = document.getElementById('stratName').value.trim();
+  if (!name) return alert('請填策略名稱');
+  const conditions = collectConditions();
+  try {
+    if (currentStratId) {
+      await api('PUT', `/qianshao/strategies/${currentStratId}`, { name, conditions });
+    } else {
+      const created = await api('POST', '/qianshao/strategies', { name, conditions });
+      currentStratId = created.id;
+    }
+    await loadStrategies();
+    alert('儲存成功');
+  } catch (e) { alert('儲存失敗：' + e.message); }
+}
+
+async function deleteStrategy() {
+  if (!currentStratId) return alert('未選擇策略');
+  if (!confirm('確定刪除？')) return;
+  try {
+    await api('DELETE', `/qianshao/strategies/${currentStratId}`);
+    currentStratId = null;
+    await loadStrategies();
+  } catch (e) { alert('刪除失敗：' + e.message); }
+}
+
+// ── Analyse ─────────────────────────────────────────────────────────────────
+async function runAnalyse() {
+  if (!currentStratId) {
+    if (!confirm('尚未儲存策略，要先自動儲存再分析嗎？')) return;
+    await saveStrategy();
+    if (!currentStratId) return;
+  }
+  const ticker = document.getElementById('analyseTicker').value.trim().toUpperCase();
+  if (!ticker) return alert('請輸入股票代碼');
+
+  document.getElementById('resultArea').innerHTML =
+    '<div class="text-slate-400 text-sm py-8 text-center">分析中…（首次會爬 5 個交易日籌碼，約 5-10 秒）</div>';
+  switchMode('result');
+
+  try {
+    const record = await api('POST', '/qianshao/analyse', { strategy_id: currentStratId, ticker });
+    lastResult = record;
+    renderResult(record);
+  } catch (e) {
+    document.getElementById('resultArea').innerHTML =
+      `<div class="text-red-400 text-sm py-8 text-center">分析失敗：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderResult(record) {
+  const r = record.result || {};
+  const s = r.technical_summary || {};
+  const chips = r.chips_analysis || [];
+  const kp = r.key_prices || {};
+  const mf = r.main_force_signal || {};
+  const pat = r.pattern_analysis || {};
+  const tbl = r.indicators_table || [];
+  const sug = r.suggestion || {};
+  const wr  = r.win_rate || 0;
+
+  const TREND_LABEL = { bull: '多頭', bear: '空頭', range: '盤整', neutral: '中性' };
+  const LEVEL_LABEL = { safe: '安全', watch: '觀望', danger: '危險' };
+  const PATTERN_LABEL = { formed: '已形成', forming: '形成中', none: '未形成', insufficient: '資料不足' };
+  const trendBadge = (v) => {
+    const cls = (v === 'bull' || v === '多頭') ? 'badge-bull'
+              : (v === 'bear' || v === '空頭') ? 'badge-bear' : 'badge-neutral';
+    return `<span class="badge ${cls}">${escapeHtml(TREND_LABEL[v] || v || '—')}</span>`;
+  };
+  const levelBadge = (v) => {
+    const cls = (v === 'safe' || v === '安全') ? 'badge-safe'
+              : (v === 'danger' || v === '危險') ? 'badge-danger' : 'badge-warn';
+    return `<span class="badge ${cls}">${escapeHtml(LEVEL_LABEL[v] || v || '—')}</span>`;
+  };
+  const patBadge = (v, formedCls) => {
+    const cls = (v === 'formed' || v === '已形成') ? formedCls
+              : (v === 'forming' || v === '形成中') ? 'badge-warn' : 'badge-neutral';
+    return `<span class="badge ${cls}">${escapeHtml(PATTERN_LABEL[v] || v || '—')}</span>`;
+  };
+  const chipCell = (v) => {
+    const n = +v || 0;
+    if (n > 0) return `<td class="text-right text-red-400">+${n}</td>`;
+    if (n < 0) return `<td class="text-right text-green-400">${n}</td>`;
+    return `<td class="text-right">${n}</td>`;
+  };
+
+  const html = `
+  <div class="flex items-center gap-4 mb-4 pb-3 border-b border-slate-700">
+    <div>
+      <span class="text-xl font-bold text-white">${escapeHtml(record.stock_name || '')}</span>
+      <span class="text-slate-400 ml-2">${escapeHtml(record.ticker)}</span>
+    </div>
+    <div class="ml-auto flex items-center gap-3 text-sm">
+      <span class="text-slate-400">策略：<span class="text-blue-400">${escapeHtml(record.strategy_name)}</span></span>
+      <span class="text-slate-400">${escapeHtml(record.analyzed_at)}</span>
+      <a class="btn btn-ghost text-xs" target="_blank" href="${API}/qianshao/analysis/${record.id}/report.html">下載 HTML</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-3">
+    <div class="col-span-4 card-sm border border-slate-700">
+      <div class="text-sm font-medium text-blue-400 mb-3 pb-2 border-b border-slate-700">技術分析總覽</div>
+      <div class="space-y-2">
+        <div class="flex justify-between"><span class="result-label">趨勢方向</span><span class="result-value">${trendBadge(s.trend)} ${escapeHtml(s.trend_desc || '')}</span></div>
+        <div class="flex justify-between"><span class="result-label">價格位置</span><span class="result-value">${escapeHtml(s.price_position || '')}</span></div>
+        <div class="flex justify-between"><span class="result-label">均線排列</span><span class="result-value">${escapeHtml(s.ma_alignment || '')}</span></div>
+        <div class="flex justify-between"><span class="result-label">量價關係</span><span class="result-value">${escapeHtml(s.volume_price || '')}</span></div>
+        <div class="flex justify-between"><span class="result-label">布林位置</span><span class="result-value">${escapeHtml(s.bollinger_position || '')}</span></div>
+        <div class="flex justify-between"><span class="result-label">布林通道</span><span class="result-value">${escapeHtml(s.bollinger_state || '')}</span></div>
+        <div class="flex justify-between mt-2 pt-2 border-t border-slate-700"><span class="result-label">綜合評估</span><span class="font-medium text-yellow-400">${escapeHtml(s.overall || '')}</span></div>
+      </div>
+    </div>
+
+    <div class="col-span-4 card-sm border border-slate-700">
+      <div class="text-sm font-medium text-blue-400 mb-3 pb-2 border-b border-slate-700">籌碼分析（張）</div>
+      <table class="w-full text-xs">
+        <thead><tr class="text-slate-500"><th class="text-left pb-2">日期</th><th class="text-right pb-2">外資</th><th class="text-right pb-2">投信</th><th class="text-right pb-2">自營商</th><th class="text-right pb-2">合計</th></tr></thead>
+        <tbody>${chips.length ? chips.map(c =>
+          `<tr><td class="py-1">${escapeHtml(c.date)}</td>${chipCell(c.foreign)}${chipCell(c.trust ?? c.investment_trust)}${chipCell(c.dealer)}${chipCell(c.total)}</tr>`
+        ).join('') : '<tr><td colspan="5" class="text-slate-500 text-center py-2">無資料</td></tr>'}</tbody>
+      </table>
+      <div class="mt-3 pt-2 border-t border-slate-700 text-sm text-yellow-400 font-medium">${escapeHtml(r.chips_conclusion || '')}</div>
+    </div>
+
+    <div class="col-span-4 space-y-3">
+      <div class="card-sm border border-slate-700">
+        <div class="text-sm font-medium text-blue-400 mb-3 pb-2 border-b border-slate-700">關鍵價位</div>
+        <div class="space-y-1 text-sm">
+          <div class="key-price"><span class="text-slate-400">壓力區</span><span class="text-red-400 font-medium">${escapeHtml(kp.pressure || '—')}</span></div>
+          <div class="key-price"><span class="text-slate-400">回檔區</span><span class="text-yellow-400 font-medium">${escapeHtml(kp.pullback || '—')}</span></div>
+          <div class="key-price"><span class="text-slate-400">支撐區</span><span class="text-green-400 font-medium">${escapeHtml(kp.support || '—')}</span></div>
+          <div class="key-price"><span class="text-slate-400">跌破防守</span><span class="text-white">${escapeHtml(kp.stop_loss || '—')}</span></div>
+          <div class="key-price"><span class="text-slate-400">強勢關鍵</span><span class="text-white">${escapeHtml(kp.breakout || '—')}</span></div>
+        </div>
+      </div>
+      <div class="card-sm border border-slate-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-medium text-blue-400 mb-1">主力燈號</div>
+            <div class="text-2xl font-bold">${levelBadge(mf.level)}</div>
+          </div>
+          <div class="text-right text-xs text-slate-400 max-w-[55%]">
+            <div>理由：</div>
+            <div class="text-slate-300">${escapeHtml(mf.reason || '')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-span-4 card-sm border border-slate-700">
+      <div class="text-sm font-medium text-blue-400 mb-3 pb-2 border-b border-slate-700">型態分析</div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="text-center p-3 rounded-lg bg-slate-800">
+          <div class="text-sm text-slate-400 mb-2">W 底</div>
+          ${patBadge(pat.w_bottom, 'badge-safe')}
+        </div>
+        <div class="text-center p-3 rounded-lg bg-slate-800">
+          <div class="text-sm text-slate-400 mb-2">M 頭</div>
+          ${patBadge(pat.m_top, 'badge-danger')}
+        </div>
+      </div>
+      <div class="mt-3 pt-2 border-t border-slate-700">
+        <div class="text-xs text-slate-400 mb-1">近期 K 線訊號</div>
+        <div class="flex flex-wrap gap-1">${
+          (pat.k_signals || []).length
+            ? pat.k_signals.map(k =>
+                `<span class="badge ${k.type === 'bull' ? 'badge-bull' : k.type === 'bear' ? 'badge-bear' : 'badge-neutral'}">${escapeHtml(k.name)}</span>`
+              ).join('')
+            : '<span class="text-xs text-slate-500">無訊號</span>'
+        }</div>
+      </div>
+    </div>
+
+    <div class="col-span-4 card-sm border border-slate-700">
+      <div class="text-sm font-medium text-blue-400 mb-3 pb-2 border-b border-slate-700">技術指標總覽</div>
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-500 text-xs"><th class="text-left pb-2">指標</th><th class="text-center pb-2">趨勢</th><th class="text-left pb-2">說明</th></tr></thead>
+        <tbody>${tbl.map(row => `<tr>
+          <td class="py-1.5">${escapeHtml(row.name)}</td>
+          <td class="text-center">${trendBadge(row.trend)}</td>
+          <td class="text-xs text-slate-400">${escapeHtml(row.description)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col-span-4 space-y-3">
+      <div class="card-sm border border-slate-700 flex items-center gap-4">
+        <div class="relative" style="width:90px;height:90px;">
+          <svg viewBox="0 0 100 100" class="w-full h-full" style="transform:rotate(-90deg);">
+            <circle cx="50" cy="50" r="42" fill="none" stroke="#1e293b" stroke-width="8"/>
+            <circle cx="50" cy="50" r="42" fill="none" stroke="#3b82f6" stroke-width="8"
+              stroke-dasharray="264" stroke-dashoffset="${264 - 264 * wr / 100}" stroke-linecap="round"/>
+          </svg>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <span class="text-2xl font-bold text-blue-400">${wr}%</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-sm font-medium text-blue-400 mb-1">綜合勝率</div>
+          <div class="text-xs text-slate-400">命中 ${r.win_rate_detail?.hit ?? 0} / ${r.win_rate_detail?.total ?? 0} 條件</div>
+        </div>
+      </div>
+      <div class="card-sm border border-slate-700">
+        <div class="text-sm font-medium text-blue-400 mb-2 pb-2 border-b border-slate-700">操作建議</div>
+        <div class="space-y-1.5 text-sm">
+          <div class="flex gap-2"><span class="text-slate-400 w-16 flex-shrink-0">策略</span><span class="text-white font-medium">${escapeHtml(sug.strategy || '—')}</span></div>
+          <div class="flex gap-2"><span class="text-slate-400 w-16 flex-shrink-0">進場點</span><span class="text-yellow-400">${escapeHtml(sug.entry || '—')}</span></div>
+          <div class="flex gap-2"><span class="text-slate-400 w-16 flex-shrink-0">加碼點</span><span class="text-red-400">${escapeHtml(sug.add || '—')}</span></div>
+          <div class="flex gap-2"><span class="text-slate-400 w-16 flex-shrink-0">停損點</span><span class="text-green-400">${escapeHtml(sug.stop_loss || '—')}</span></div>
+          <div class="flex gap-2"><span class="text-slate-400 w-16 flex-shrink-0">防守點</span><span class="text-white">${escapeHtml(sug.defense || '—')}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-span-12 card-sm border border-slate-700">
+      <span class="text-yellow-400 font-bold mr-2">整體結論</span>
+      <span class="text-sm text-slate-300">${escapeHtml(r.conclusion || '')}</span>
+    </div>
+  </div>`;
+  document.getElementById('resultArea').innerHTML = html;
+}
+
+// ── History ─────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const ticker = document.getElementById('histFilterTicker').value.trim();
+  const days   = document.getElementById('histFilterDays').value;
+  const params = new URLSearchParams();
+  if (ticker) params.set('ticker', ticker);
+  if (days)   params.set('days', days);
+  let list = [];
+  try {
+    list = await api('GET', '/qianshao/analysis/history?' + params.toString());
+  } catch (e) {
+    document.getElementById('historyTable').innerHTML =
+      `<div class="text-red-400 text-sm py-8 text-center">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  document.getElementById('historyCount').textContent = `共 ${list.length} 筆`;
+  if (!list.length) {
+    document.getElementById('historyTable').innerHTML = '<div class="text-slate-500 text-sm py-8 text-center">無紀錄</div>';
+    return;
+  }
+  const TL = { bull: '多頭', bear: '空頭', range: '盤整', neutral: '中性' };
+  const LL = { safe: '安全', watch: '觀望', danger: '危險' };
+  const trendBadge = (v) => {
+    const cls = (v === 'bull' || v === '多頭') ? 'badge-bull' : (v === 'bear' || v === '空頭') ? 'badge-bear' : 'badge-neutral';
+    return `<span class="badge ${cls}">${escapeHtml(TL[v] || v || '—')}</span>`;
+  };
+  const levelBadge = (v) => {
+    const cls = (v === 'safe' || v === '安全') ? 'badge-safe' : (v === 'danger' || v === '危險') ? 'badge-danger' : 'badge-warn';
+    return `<span class="badge ${cls}">${escapeHtml(LL[v] || v || '—')}</span>`;
+  };
+  const wrColor = (n) => n >= 70 ? 'text-blue-400' : n >= 50 ? 'text-yellow-400' : 'text-green-400';
+
+  document.getElementById('historyTable').innerHTML = `
+    <table class="w-full text-sm">
+      <thead><tr class="text-slate-500 text-xs border-b border-slate-700">
+        <th class="text-left pb-3 pl-3">分析時間</th>
+        <th class="text-left pb-3">股票</th>
+        <th class="text-left pb-3">策略</th>
+        <th class="text-center pb-3">勝率</th>
+        <th class="text-center pb-3">趨勢</th>
+        <th class="text-center pb-3">主力</th>
+        <th class="text-left pb-3">建議</th>
+        <th class="text-center pb-3">操作</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(r => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
+          <td class="py-2 pl-3 text-slate-400">${escapeHtml((r.analyzed_at || '').replace('T',' ').slice(0,16))}</td>
+          <td class="py-2"><span class="text-white font-medium">${escapeHtml(r.ticker)}</span> <span class="text-slate-500">${escapeHtml(r.stock_name || '')}</span></td>
+          <td class="py-2 text-blue-400">${escapeHtml(r.strategy_name || '')}</td>
+          <td class="py-2 text-center font-bold ${wrColor(r.win_rate || 0)}">${r.win_rate}%</td>
+          <td class="py-2 text-center">${trendBadge(r.trend)}</td>
+          <td class="py-2 text-center">${levelBadge(r.main_force)}</td>
+          <td class="py-2 text-slate-300">${escapeHtml(r.suggestion || '')}</td>
+          <td class="py-2 text-center">
+            <button class="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-700 mr-1" onclick="viewRecord('${r.id}')">看</button>
+            <a class="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-slate-700 mr-1" target="_blank" href="${API}/qianshao/analysis/${r.id}/report.html">HTML</a>
+            <button class="text-red-400 hover:text-red-300 text-xs px-2 py-0.5 rounded bg-red-900/30" onclick="deleteRecord('${r.id}')">x</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function viewRecord(id) {
+  try {
+    const record = await api('GET', `/qianshao/analysis/${id}`);
+    lastResult = record;
+    renderResult(record);
+    switchMode('result');
+  } catch (e) { alert('載入失敗：' + e.message); }
+}
+
+async function deleteRecord(id) {
+  if (!confirm('刪除這筆紀錄？')) return;
+  try {
+    await api('DELETE', `/qianshao/analysis/${id}`);
+    loadHistory();
+  } catch (e) { alert('刪除失敗：' + e.message); }
+}
+
+// ── Util ────────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;',
+  }[c]));
+}
+
+init();
+</script>
+</body>
+</html>
