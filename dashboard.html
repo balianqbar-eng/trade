@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>股票戰情儀表板</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
+    .gauge-bg { fill: none; stroke: #334155; stroke-width: 18; }
+    .gauge-fill { fill: none; stroke-width: 18; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+    .v2-tile { background: #0f172a; border-radius: 10px; padding: 14px; text-align: center; }
+    .v2-divider { border-top: 1px solid #334155; margin: 24px 0; }
+    .v2-event-banner { background: linear-gradient(90deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05)); border-left: 3px solid #f59e0b; }
+    .v2-badge { background: #3b82f6; color: white; font-size: 0.6rem; padding: 1px 6px; border-radius: 4px; vertical-align: middle; margin-left: 4px; }
+    .v2-quad { border: 1px solid #334155; padding: 12px; border-radius: 8px; text-align: center; }
+    .v2-ai-box { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); }
+    .v2-section { scroll-margin-top: 20px; }
     body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
     .up   { color: #ef4444; }
     .down { color: #22c55e; }
@@ -139,8 +149,10 @@
         <button class="tab-btn" onclick="showTab('technical',this)">技術面</button>
         <button class="tab-btn" onclick="showTab('kline',this)">K線</button>
         <button class="tab-btn" onclick="showTab('strategy',this)">策略</button>
+        <button class="tab-btn" onclick="showTab('qianshao',this)">錢哨</button>
         <button class="tab-btn" onclick="showTab('pnl',this)">損益</button>
         <button class="tab-btn" onclick="showTab('news',this)">消息面</button>
+        <button class="tab-btn" onclick="showTab('v2lab',this)" style="border:1px dashed #3b82f6">V2 實驗<span class="v2-badge">NEW</span></button>
       </div>
 
       <!-- 基本面 -->
@@ -342,9 +354,328 @@
         </div>
       </div>
 
+      <!-- 錢哨 -->
+      <div id="tab-qianshao" class="hidden rounded-xl overflow-hidden" style="height:780px">
+        <iframe id="qianshaoFrame" class="w-full h-full border-0" src="about:blank"></iframe>
+      </div>
+
       <!-- 消息面 -->
       <div id="tab-news" class="hidden rounded-xl overflow-hidden" style="height:600px">
         <iframe id="newsFrame" class="w-full h-full border-0" src="about:blank"></iframe>
+      </div>
+
+      <!-- V2 實驗 -->
+      <div id="tab-v2lab" class="hidden space-y-4">
+
+        <!-- 事件預警條 (#3) -->
+        <div id="v2EventBanner" class="v2-event-banner rounded-lg px-4 py-2.5 flex items-center gap-3 text-sm">
+          <span class="text-amber-400 text-lg">⚠</span>
+          <div id="v2EventContent" class="flex-1 flex flex-wrap gap-x-6 gap-y-1 text-slate-400">載入中…</div>
+          <span class="text-xs text-slate-500">自動掃描</span>
+        </div>
+
+        <!-- 內部 sub-nav -->
+        <div class="flex gap-2 overflow-x-auto pb-1" style="-webkit-overflow-scrolling:touch;scrollbar-width:none">
+          <button class="kline-btn active" onclick="v2Sub('health',this)">健檢評分</button>
+          <button class="kline-btn" onclick="v2Sub('chipRadar',this)">籌碼雷達</button>
+          <button class="kline-btn" onclick="v2Sub('macro',this)">大盤情緒</button>
+          <button class="kline-btn" onclick="v2Sub('branch',this)">主力追蹤</button>
+        </div>
+
+        <!-- ====== #1 個股健檢評分 ====== -->
+        <div id="v2-health" class="card v2-section">
+          <div class="flex items-center justify-between mb-5">
+            <div class="text-xs text-slate-400 uppercase tracking-wider">個股健檢評分</div>
+            <button onclick="loadV2Health()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重整</button>
+          </div>
+          <!-- Gauge -->
+          <div class="flex flex-col items-center mb-6">
+            <div style="position:relative;width:220px;height:130px;margin:0 auto">
+              <svg viewBox="0 0 220 130" style="width:100%;height:100%">
+                <path d="M 20 120 A 90 90 0 0 1 200 120" class="gauge-bg"/>
+                <path d="M 20 120 A 90 90 0 0 1 200 120" class="gauge-fill" id="v2GaugeArc"
+                  stroke="url(#v2GaugeGrad)" stroke-dasharray="283" stroke-dashoffset="283"/>
+                <defs>
+                  <linearGradient id="v2GaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#ef4444"/>
+                    <stop offset="30%" stop-color="#f59e0b"/>
+                    <stop offset="60%" stop-color="#eab308"/>
+                    <stop offset="100%" stop-color="#22c55e"/>
+                  </linearGradient>
+                </defs>
+                <text x="15" y="128" fill="#64748b" font-size="10">注意</text>
+                <text x="65" y="30" fill="#64748b" font-size="10">較差</text>
+                <text x="97" y="15" fill="#64748b" font-size="10">普通</text>
+                <text x="138" y="28" fill="#64748b" font-size="10">良好</text>
+                <text x="185" y="128" fill="#64748b" font-size="10">優</text>
+              </svg>
+            </div>
+            <div id="v2ScoreNum" class="text-5xl font-bold text-slate-500 -mt-2">—</div>
+            <div id="v2ScoreLabel" class="text-sm text-slate-500 mt-1">查詢股票後顯示</div>
+          </div>
+          <!-- 四維度 -->
+          <div id="v2Dims" class="grid grid-cols-4 gap-3 mb-6">
+            <div class="v2-tile"><div class="text-2xl font-bold text-slate-500">—</div><div class="text-xs text-slate-400 mt-1">獲利</div></div>
+            <div class="v2-tile"><div class="text-2xl font-bold text-slate-500">—</div><div class="text-xs text-slate-400 mt-1">成長</div></div>
+            <div class="v2-tile"><div class="text-2xl font-bold text-slate-500">—</div><div class="text-xs text-slate-400 mt-1">股利</div></div>
+            <div class="v2-tile"><div class="text-2xl font-bold text-slate-500">—</div><div class="text-xs text-slate-400 mt-1">估價</div></div>
+          </div>
+          <!-- 健檢明細 -->
+          <div id="v2Checks" class="space-y-2 mb-6">
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">健檢項目</div>
+            <div id="v2CheckList" class="space-y-2 text-sm text-slate-500 text-center py-4">查詢股票後載入</div>
+          </div>
+          <!-- 估值 + PR -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-4">估值指標 & 市場定位 (PR)</div>
+          <div id="v2Valuation" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            <div class="v2-tile">
+              <div id="v2PE" class="text-2xl font-bold">—</div>
+              <div class="text-xs text-slate-400 mt-1">本益比 P/E</div>
+              <div class="mt-2"><div class="h-1.5 bg-slate-700 rounded-full overflow-hidden"><div id="v2PEBar" class="h-full rounded-full bg-slate-600" style="width:0%"></div></div><div id="v2PEPR" class="text-xs text-slate-500 mt-1">PR —</div></div>
+            </div>
+            <div class="v2-tile">
+              <div id="v2PB" class="text-2xl font-bold">—</div>
+              <div class="text-xs text-slate-400 mt-1">股價淨值比 P/B</div>
+              <div class="mt-2"><div class="h-1.5 bg-slate-700 rounded-full overflow-hidden"><div id="v2PBBar" class="h-full rounded-full bg-slate-600" style="width:0%"></div></div><div id="v2PBPR" class="text-xs text-slate-500 mt-1">PR —</div></div>
+            </div>
+            <div class="v2-tile">
+              <div id="v2Yield" class="text-2xl font-bold">—</div>
+              <div class="text-xs text-slate-400 mt-1">殖利率</div>
+              <div class="mt-2"><div class="h-1.5 bg-slate-700 rounded-full overflow-hidden"><div id="v2YieldBar" class="h-full rounded-full bg-slate-600" style="width:0%"></div></div><div id="v2YieldPR" class="text-xs text-slate-500 mt-1">PR —</div></div>
+            </div>
+            <div class="v2-tile">
+              <div id="v2EPS" class="text-2xl font-bold">—</div>
+              <div class="text-xs text-slate-400 mt-1">近四季 EPS</div>
+              <div class="mt-2"><div class="h-1.5 bg-slate-700 rounded-full overflow-hidden"><div id="v2EPSBar" class="h-full rounded-full bg-slate-600" style="width:0%"></div></div><div id="v2EPSPR" class="text-xs text-slate-500 mt-1">PR —</div></div>
+            </div>
+          </div>
+          <!-- 估值判定 -->
+          <div id="v2Judgment" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="v2-tile"><div class="text-xs text-slate-400">本益比估值</div><div id="v2JudgPE" class="text-sm font-semibold text-slate-500 mt-1">—</div></div>
+            <div class="v2-tile"><div class="text-xs text-slate-400">股價淨值比</div><div id="v2JudgPB" class="text-sm font-semibold text-slate-500 mt-1">—</div></div>
+            <div class="v2-tile"><div class="text-xs text-slate-400">殖利率估值</div><div id="v2JudgYield" class="text-sm font-semibold text-slate-500 mt-1">—</div></div>
+            <div class="v2-tile"><div class="text-xs text-slate-400">近4年配息</div><div id="v2JudgDiv" class="text-sm font-semibold text-slate-500 mt-1">—</div></div>
+          </div>
+        </div>
+
+        <!-- ====== #2 籌碼雷達 ====== -->
+        <div id="v2-chipRadar" class="card v2-section hidden">
+          <div class="text-xs text-slate-400 mb-4 uppercase tracking-wider">籌碼雷達</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div class="space-y-4">
+              <div class="flex justify-between items-center py-2 border-b border-slate-700">
+                <span class="text-slate-300">外資及陸資</span>
+                <span id="v2ChipForeign" class="text-2xl font-bold">—</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-slate-700">
+                <span class="text-slate-300">投信</span>
+                <span id="v2ChipTrust" class="text-2xl font-bold">—</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-slate-700">
+                <span class="text-slate-300">自營商</span>
+                <span id="v2ChipDealer" class="text-2xl font-bold">—</span>
+              </div>
+              <div class="flex justify-between items-center py-2">
+                <span class="font-semibold">合計</span>
+                <span id="v2ChipTotal" class="text-2xl font-bold">—</span>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-wider mb-2 text-center">籌碼強度雷達圖</div>
+              <div style="max-width:280px;margin:0 auto"><canvas id="v2RadarCanvas"></canvas></div>
+            </div>
+          </div>
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">連續買賣超天數</div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="v2-tile"><div class="text-xs text-slate-400">外資</div><div id="v2StreakF" class="text-xl font-bold mt-1">—</div></div>
+            <div class="v2-tile"><div class="text-xs text-slate-400">投信</div><div id="v2StreakT" class="text-xl font-bold mt-1">—</div></div>
+            <div class="v2-tile"><div class="text-xs text-slate-400">自營商</div><div id="v2StreakD" class="text-xl font-bold mt-1">—</div></div>
+          </div>
+        </div>
+
+        <!-- ====== #4 大盤情緒 ====== -->
+        <div id="v2-macro" class="card v2-section hidden">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-wider">大盤情緒雷達</div>
+              <div class="text-xs text-slate-500 mt-1">期現權三位一體 — 即時掌握市場方向與情緒</div>
+            </div>
+            <button onclick="loadV2Macro()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重整</button>
+          </div>
+          <!-- #6 AI 白話文判讀 -->
+          <div class="v2-ai-box rounded-xl px-4 py-3 mb-5">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-blue-400 text-sm font-semibold">AI 盤中判讀</span>
+            </div>
+            <div id="v2AIText" class="text-sm text-slate-400">查詢後產生判讀…</div>
+          </div>
+          <!-- 六大指標 -->
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">宏觀雷達 — 六大核心指標</div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">現貨 (加權指數)</div>
+              <div id="v2SpotPrice" class="text-2xl font-bold">—</div>
+              <div id="v2SpotChg" class="text-sm"></div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">期貨 (台指近月)</div>
+              <div id="v2FutPrice" class="text-2xl font-bold">—</div>
+              <div id="v2FutChg" class="text-sm"></div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">選擇權 (ATM)</div>
+              <div id="v2OptPrice" class="text-2xl font-bold">—</div>
+              <div id="v2OptChg" class="text-sm"></div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">期貨未平倉 OI</div>
+              <div id="v2OI" class="text-xl font-bold">—</div>
+              <div id="v2OIChg" class="text-sm"></div>
+              <div id="v2OISignal" class="mt-1 text-xs"></div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">Put/Call Ratio</div>
+              <div id="v2PCR" class="text-2xl font-bold">—</div>
+              <div class="mt-2">
+                <div class="h-2 bg-slate-700 rounded-full overflow-hidden relative">
+                  <div class="absolute inset-0 flex">
+                    <div class="bg-emerald-500 h-full" style="width:40%"></div>
+                    <div class="bg-slate-600 h-full" style="width:25%"></div>
+                    <div class="bg-red-500 h-full" style="width:35%"></div>
+                  </div>
+                  <div id="v2PCRNeedle" class="absolute h-full w-0.5 bg-white" style="left:50%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>偏多 &lt;0.85</span><span>中性</span><span>偏空 &gt;1.15</span>
+                </div>
+              </div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400 mb-1">偏度 Skew</div>
+              <div id="v2Skew" class="text-2xl font-bold">—</div>
+              <div class="text-xs text-slate-400 mt-1">ATM Put - ATM Call</div>
+              <div id="v2SkewSignal" class="text-xs"></div>
+            </div>
+          </div>
+          <!-- 基差 -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">基差熱區 (Basis)</div>
+          <div class="v2-tile mb-5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm text-slate-300">期貨 - 現貨 基差</span>
+              <span id="v2Basis" class="text-xl font-bold">—</span>
+            </div>
+            <div class="h-2 bg-slate-700 rounded-full overflow-hidden relative mb-2">
+              <div id="v2BasisBar" class="absolute h-full w-1 bg-white rounded" style="left:50%"></div>
+            </div>
+            <div class="flex justify-between text-xs">
+              <span class="text-emerald-400">貼水（避險）</span>
+              <span class="text-slate-500">0</span>
+              <span class="text-red-400">溢價（追價）</span>
+            </div>
+            <div id="v2BasisSignal" class="text-xs mt-2"></div>
+          </div>
+          <!-- OI 四象限 -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">籌碼解碼 — OI x 價格四象限</div>
+          <div class="grid grid-cols-2 gap-2 mb-3" style="max-width:400px">
+            <div id="v2Q2" class="v2-quad" style="background:rgba(239,68,68,0.1)">
+              <div class="text-sm font-semibold text-red-400">增倉下跌</div>
+              <div class="text-xs text-slate-400 mt-1">空軍壓境</div>
+            </div>
+            <div id="v2Q1" class="v2-quad" style="background:rgba(34,197,94,0.1)">
+              <div class="text-sm font-semibold text-emerald-400">增倉上漲</div>
+              <div class="text-xs text-slate-400 mt-1">多軍進駐</div>
+            </div>
+            <div id="v2Q3" class="v2-quad" style="background:rgba(148,163,184,0.1)">
+              <div class="text-sm font-semibold text-slate-400">減倉下跌</div>
+              <div class="text-xs text-slate-400 mt-1">多單停損</div>
+            </div>
+            <div id="v2Q4" class="v2-quad" style="background:rgba(148,163,184,0.1)">
+              <div class="text-sm font-semibold text-slate-400">減倉上漲</div>
+              <div class="text-xs text-slate-400 mt-1">空單回補（軋空）</div>
+            </div>
+          </div>
+          <!-- 跨市場槓桿 -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">跨市場槓桿效應</div>
+          <div class="space-y-2 mb-5">
+            <div class="flex items-center gap-3">
+              <span class="text-sm text-slate-400 w-20">現貨</span>
+              <div class="flex-1 h-6 bg-slate-800 rounded-full overflow-hidden">
+                <div id="v2LevSpot" class="h-full bg-blue-500 rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white transition-all" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-sm text-slate-400 w-20">期貨</span>
+              <div class="flex-1 h-6 bg-slate-800 rounded-full overflow-hidden">
+                <div id="v2LevFut" class="h-full bg-amber-500 rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white transition-all" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-sm text-slate-400 w-20">選擇權</span>
+              <div class="flex-1 h-6 bg-slate-800 rounded-full overflow-hidden">
+                <div id="v2LevOpt" class="h-full bg-red-500 rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white transition-all" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <!-- 支撐壓力 -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">選擇權結構 — 支撐 & 壓力</div>
+          <div class="grid grid-cols-2 gap-4 mb-5">
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400">最大支撐 (Put Max OI)</div>
+              <div id="v2Support" class="text-2xl font-bold text-emerald-400 mt-1">—</div>
+              <div id="v2SupportDist" class="text-xs text-slate-500 mt-1"></div>
+            </div>
+            <div class="v2-tile">
+              <div class="text-xs text-slate-400">最大壓力 (Call Max OI)</div>
+              <div id="v2Resist" class="text-2xl font-bold text-red-400 mt-1">—</div>
+              <div id="v2ResistDist" class="text-xs text-slate-500 mt-1"></div>
+            </div>
+          </div>
+          <!-- 決策矩陣 -->
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">決策檢核矩陣</div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-slate-400 text-xs">
+                <th class="text-left py-2 pr-3">指標</th>
+                <th class="py-2 px-3">當前值</th>
+                <th class="py-2 px-3">偏多攻擊</th>
+                <th class="py-2 px-3">偏空避險</th>
+                <th class="py-2 px-3">判定</th>
+              </tr></thead>
+              <tbody id="v2DecisionBody" class="text-slate-300"></tbody>
+            </table>
+          </div>
+          <div id="v2Verdict" class="mt-3 px-3 py-2 rounded-lg text-sm hidden"></div>
+        </div>
+
+        <!-- ====== #5 主力分點追蹤 ====== -->
+        <div id="v2-branch" class="card v2-section hidden">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-wider">主力分點追蹤</div>
+              <div class="text-xs text-slate-500 mt-1">追蹤累計買賣超最大的超級主力分點券商</div>
+            </div>
+            <button onclick="loadV2Branch()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重整</button>
+          </div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">近 20 日累計淨買超 Top 5 分點</div>
+          <div id="v2BranchList" class="space-y-2 mb-5">
+            <div class="text-slate-500 text-sm text-center py-4">查詢股票後載入</div>
+          </div>
+          <div class="v2-divider"></div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-3">主力分點淨差走勢（近 20 日）</div>
+          <div style="height:200px"><canvas id="v2BranchChart"></canvas></div>
+          <div class="v2-divider"></div>
+          <div id="v2BranchSignal" class="v2-ai-box rounded-xl px-4 py-3">
+            <div class="text-blue-400 text-sm font-semibold mb-1">Branch Signal 判讀</div>
+            <div id="v2BranchText" class="text-sm text-slate-400">查詢後產生判讀…</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -365,12 +696,14 @@
         </div>
         <div class="flex items-center gap-2">
           <span id="watchlistStatus" class="text-xs text-slate-500">尚未連線</span>
+          <button id="btnStartXQ" onclick="startXQ()"
+            class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">啟動 XQ</button>
           <button onclick="loadWatchlistGroups()"
             class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded border border-slate-600 transition">重新整理</button>
         </div>
       </div>
       <div id="watchlistGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div class="text-slate-600 text-xs col-span-full text-center py-3">連線 XQ 後選擇商品組合載入清單</div>
+        <div id="watchlistEmpty" class="text-slate-500 text-xs col-span-full text-center py-3">— 尚無資料 —</div>
       </div>
     </div>
 
@@ -544,7 +877,7 @@ function _updateStratCountdown() {
 }
 
 function showTab(name, btn) {
-  ['fundamental','chip','technical','kline','strategy','pnl','news'].forEach(t=>
+  ['fundamental','chip','technical','kline','strategy','qianshao','pnl','news','v2lab'].forEach(t=>
     document.getElementById(`tab-${t}`).classList.add('hidden'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.remove('hidden');
@@ -553,6 +886,11 @@ function showTab(name, btn) {
   if (name === 'strategy' && currentTicker) { loadStrategy(currentTicker); _startStratRefresh(); }
   else _stopStratRefresh();
   if (name === 'pnl') loadPositions();
+  if (name === 'qianshao') {
+    const f = document.getElementById('qianshaoFrame');
+    if (f.src === 'about:blank') f.src = `${BASE}/qianshao`;
+  }
+  if (name === 'v2lab' && currentTicker) loadV2All(currentTicker);
 }
 
 async function search() {
@@ -971,23 +1309,56 @@ function watchlistAddMonitor(ticker) {
   slotStart(i, ticker);
 }
 
+async function startXQ() {
+  const btn = document.getElementById('btnStartXQ');
+  const statusEl = document.getElementById('watchlistStatus');
+  btn.disabled = true;
+  btn.textContent = '啟動中…';
+  statusEl.textContent = '正在啟動 XQ…';
+  statusEl.style.color = '#facc15';
+  try {
+    const r = await fetch(`${BASE}/start-xq`, { method: 'POST' });
+    const j = await r.json();
+    if (j.status === 'already_running') {
+      statusEl.textContent = 'XQ 已在執行';
+      statusEl.style.color = '#4ade80';
+    } else {
+      statusEl.textContent = '啟動指令已送出，等待 10 秒…';
+      setTimeout(() => { loadWatchlistGroups(); }, 10000);
+    }
+  } catch(e) {
+    statusEl.textContent = '啟動失敗：' + e.message;
+    statusEl.style.color = '#f87171';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '啟動 XQ';
+  }
+}
+
 async function loadWatchlistGroups() {
   const statusEl = document.getElementById('watchlistStatus');
   const sel      = document.getElementById('watchlistGroupSelect');
   statusEl.textContent = '載入中…';
+  statusEl.style.color = '';
   try {
-    const groups = await fetch(`${BASE}/xq/watchlists`).then(r => {
-      if (!r.ok) throw new Error(r.status);
-      return r.json();
-    });
+    const r = await fetch(`${BASE}/xq/watchlists`);
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const j = await r.json(); msg = j.detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const groups = await r.json();
     const prev = sel.value;
     sel.innerHTML = '<option value="">— 選擇商品組合 —</option>' +
       groups.map(g => `<option value="${g}"${g === prev ? ' selected' : ''}>${g}</option>`).join('');
     statusEl.textContent = '已連線';
+    statusEl.style.color = '#4ade80';
     if (prev && groups.includes(prev)) loadWatchlist(prev);
     else if (groups.length) loadWatchlist(groups[0]);
   } catch(e) {
-    statusEl.textContent = '尚未連線';
+    const isNetwork = e instanceof TypeError;
+    statusEl.textContent = isNetwork ? '橋接服務無回應' : `錯誤：${e.message}`;
+    statusEl.style.color = '#f87171';
   }
 }
 
@@ -996,15 +1367,21 @@ async function loadWatchlist(group) {
   const statusEl = document.getElementById('watchlistStatus');
   statusEl.textContent = '載入中…';
   try {
-    const data = await fetch(`${BASE}/xq/watchlist?group=${encodeURIComponent(group)}`).then(r => {
-      if (!r.ok) throw new Error(r.status);
-      return r.json();
-    });
+    const r = await fetch(`${BASE}/xq/watchlist?group=${encodeURIComponent(group)}`);
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const j = await r.json(); msg = j.detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const data = await r.json();
     _watchlist = data;
     _renderWatchlist(data);
     statusEl.textContent = `更新：${new Date().toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})}`;
+    statusEl.style.color = '';
   } catch(e) {
-    statusEl.textContent = '尚未連線';
+    const isNetwork = e instanceof TypeError;
+    statusEl.textContent = isNetwork ? '橋接服務無回應' : `錯誤：${e.message}`;
+    statusEl.style.color = '#f87171';
     _renderWatchlist([]);
   }
 }
@@ -1583,5 +1960,450 @@ function renderTechnical(t) {
   <!-- Order Toast -->
   <div id="orderToast" class="hidden fixed bottom-6 right-6 card text-sm z-50 max-w-xs"
        style="border:1px solid #334155;white-space:pre-line"></div>
+
+  <script>
+  // ── V2 實驗 tab ──────────────────────────────────────────────
+  let _v2RadarChart = null, _v2BranchChart = null;
+
+  function v2Sub(name, btn) {
+    ['health','chipRadar','macro','branch'].forEach(s => {
+      const el = document.getElementById('v2-' + s);
+      if (el) el.classList.add('hidden');
+    });
+    document.getElementById('v2-' + name).classList.remove('hidden');
+    btn.parentElement.querySelectorAll('.kline-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (name === 'chipRadar' && currentTicker) loadV2Chip(currentTicker);
+    if (name === 'macro') loadV2Macro();
+    if (name === 'branch' && currentTicker) loadV2Branch();
+  }
+
+  async function loadV2All(ticker) {
+    loadV2Health();
+    loadV2Events(ticker);
+  }
+
+  // #1 健檢評分 — 使用真實 /fundamental API（含 EPS、淨利率、營益率、營收成長）
+  async function loadV2Health() {
+    if (!currentTicker) return;
+    try {
+      const res = await fetch(`${BASE}/fundamental/${currentTicker}`);
+      const d = await res.json();
+      const pe = d.pe, pb = d.pb, dy = d.dividendYield;
+      const eps = d.eps4q, yoy = d.revenueYoY, nm = d.netMargin, om = d.opMargin;
+
+      // 維度評分（每維 0-3）
+      let profitScore = 0, growthScore = 0, divScore = 0, valScore = 0;
+
+      // 獲利：EPS、淨利率、營益率
+      if (eps != null && eps >= 1) profitScore++;
+      if (nm != null && nm >= 5) profitScore++;
+      if (om != null && om >= 10) profitScore++;
+
+      // 成長：YoY 營收
+      if (yoy != null) {
+        if (yoy >= 20) growthScore = 3;
+        else if (yoy >= 10) growthScore = 2;
+        else if (yoy >= 0) growthScore = 1;
+      }
+
+      // 股利
+      if (dy != null) {
+        if (dy >= 5) divScore = 3;
+        else if (dy >= 3) divScore = 2;
+        else if (dy > 0) divScore = 1;
+      }
+
+      // 估價
+      let judgPE = '—', judgPB = '—', judgYield = '—';
+      let peColor = '', pbColor = '', yieldColor = '';
+      if (pe != null) {
+        document.getElementById('v2PE').textContent = pe.toFixed(1) + 'x';
+        if (pe < 12) { valScore += 2; judgPE = '便宜'; peColor = 'text-emerald-400'; }
+        else if (pe < 20) { valScore += 1; judgPE = '合理'; peColor = 'text-blue-400'; }
+        else if (pe < 30) { judgPE = '偏高'; peColor = 'text-amber-400'; }
+        else { judgPE = '昂貴'; peColor = 'text-red-400'; }
+        const pePR = Math.min(99, Math.round(pe / 50 * 100));
+        document.getElementById('v2PEBar').style.width = pePR + '%';
+        document.getElementById('v2PEBar').className = `h-full rounded-full ${pe < 20 ? 'bg-emerald-400' : pe < 30 ? 'bg-amber-400' : 'bg-red-400'}`;
+        document.getElementById('v2PEPR').textContent = 'PR ' + pePR;
+        document.getElementById('v2PEPR').className = `text-xs mt-1 ${pe < 20 ? 'text-emerald-400' : pe < 30 ? 'text-amber-400' : 'text-red-400'}`;
+      }
+      if (pb != null) {
+        document.getElementById('v2PB').textContent = pb.toFixed(1) + 'x';
+        if (pb < 1.5) { valScore += 1; judgPB = '便宜'; pbColor = 'text-emerald-400'; }
+        else if (pb < 3) { judgPB = '合理'; pbColor = 'text-blue-400'; }
+        else if (pb < 6) { judgPB = '偏高'; pbColor = 'text-amber-400'; }
+        else { judgPB = '偏貴'; pbColor = 'text-red-400'; }
+        const pbPR = Math.min(99, Math.round(pb / 10 * 100));
+        document.getElementById('v2PBBar').style.width = pbPR + '%';
+        document.getElementById('v2PBBar').className = `h-full rounded-full ${pb < 3 ? 'bg-emerald-400' : pb < 6 ? 'bg-amber-400' : 'bg-red-400'}`;
+        document.getElementById('v2PBPR').textContent = 'PR ' + pbPR;
+        document.getElementById('v2PBPR').className = `text-xs mt-1 ${pb < 3 ? 'text-emerald-400' : pb < 6 ? 'text-amber-400' : 'text-red-400'}`;
+      }
+      if (dy != null) {
+        document.getElementById('v2Yield').textContent = dy.toFixed(1) + '%';
+        if (dy >= 5) judgYield = '優良';
+        else if (dy >= 3) judgYield = '合理';
+        else judgYield = '普通';
+        yieldColor = dy >= 5 ? 'text-emerald-400' : dy >= 3 ? 'text-blue-400' : 'text-amber-400';
+        const yPR = Math.min(99, Math.round(dy / 8 * 100));
+        document.getElementById('v2YieldBar').style.width = yPR + '%';
+        document.getElementById('v2YieldBar').className = `h-full rounded-full ${dy >= 5 ? 'bg-emerald-400' : dy >= 3 ? 'bg-blue-400' : 'bg-amber-400'}`;
+        document.getElementById('v2YieldPR').textContent = 'PR ' + yPR;
+        document.getElementById('v2YieldPR').className = `text-xs mt-1 ${dy >= 5 ? 'text-emerald-400' : dy >= 3 ? 'text-blue-400' : 'text-amber-400'}`;
+      }
+      if (eps != null) {
+        document.getElementById('v2EPS').textContent = eps.toFixed(1);
+        const ePR = Math.min(99, Math.max(1, Math.round(eps / 50 * 100)));
+        document.getElementById('v2EPSBar').style.width = ePR + '%';
+        document.getElementById('v2EPSBar').className = `h-full rounded-full ${eps >= 5 ? 'bg-emerald-400' : eps >= 1 ? 'bg-blue-400' : 'bg-amber-400'}`;
+        document.getElementById('v2EPSPR').textContent = 'PR ' + ePR;
+        document.getElementById('v2EPSPR').className = `text-xs mt-1 ${eps >= 5 ? 'text-emerald-400' : 'text-blue-400'}`;
+      }
+
+      const dims = [profitScore, growthScore, divScore, valScore];
+      const total = Math.round((dims.reduce((a,b) => a+b, 0) / 12) * 100);
+      const colors = ['text-emerald-400','text-blue-400','text-amber-400','text-purple-400'];
+      const labels = ['獲利','成長','股利','估價'];
+      document.getElementById('v2Dims').innerHTML = dims.map((v, i) =>
+        `<div class="v2-tile"><div class="text-2xl font-bold ${colors[i]}">${v}</div><div class="text-xs text-slate-400 mt-1">${labels[i]}</div></div>`
+      ).join('');
+
+      const offset = 283 - (283 * total / 100);
+      document.getElementById('v2GaugeArc').setAttribute('stroke-dashoffset', offset);
+      const scoreEl = document.getElementById('v2ScoreNum');
+      scoreEl.textContent = total;
+      const labelEl = document.getElementById('v2ScoreLabel');
+      if (total >= 80) { scoreEl.className = 'text-5xl font-bold text-emerald-400 -mt-2'; labelEl.textContent = '良好'; labelEl.className = 'text-sm text-emerald-400 mt-1'; }
+      else if (total >= 60) { scoreEl.className = 'text-5xl font-bold text-amber-400 -mt-2'; labelEl.textContent = '普通'; labelEl.className = 'text-sm text-amber-400 mt-1'; }
+      else { scoreEl.className = 'text-5xl font-bold text-red-400 -mt-2'; labelEl.textContent = '注意'; labelEl.className = 'text-sm text-red-400 mt-1'; }
+
+      const checks = [
+        { name: `近 4 季 EPS >= 1`, pass: eps != null && eps >= 1, val: eps?.toFixed(2) ?? '—' },
+        { name: `單季稅後淨利率 >= 5%`, pass: nm != null && nm >= 5, val: nm != null ? nm.toFixed(1) + '%' : '—' },
+        { name: `單季營業利益率 >= 10%`, pass: om != null && om >= 10, val: om != null ? om.toFixed(1) + '%' : '—' },
+        { name: `月營收 YoY > 0`, pass: yoy != null && yoy > 0, val: yoy != null ? (yoy > 0 ? '+' : '') + yoy.toFixed(1) + '%' : '—' },
+        { name: `本益比 < 30 (估值合理)`, pass: pe != null && pe < 30, val: pe?.toFixed(1) ?? '—' },
+        { name: `殖利率 >= 3%`, pass: dy != null && dy >= 3, val: dy != null ? dy.toFixed(2) + '%' : '—' },
+      ];
+      document.getElementById('v2CheckList').innerHTML = checks.map(c =>
+        `<div class="flex justify-between items-center py-2 px-3 rounded-lg" style="background:#0f172a">
+          <span class="text-sm text-slate-300">${c.name}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-slate-400">(${c.val})</span>
+            <span class="${c.pass ? 'text-emerald-400' : 'text-red-400'} text-sm font-medium">${c.pass ? '✓ 通過' : '✗ 未通過'}</span>
+          </div>
+        </div>`
+      ).join('');
+
+      const setJudg = (id, text, color) => { const el = document.getElementById(id); el.textContent = text; el.className = `text-sm font-semibold mt-1 ${color}`; };
+      setJudg('v2JudgPE', judgPE, peColor);
+      setJudg('v2JudgPB', judgPB, pbColor);
+      setJudg('v2JudgYield', judgYield, yieldColor);
+      setJudg('v2JudgDiv', dy != null && dy > 0 ? '✓ 有配息' : '— 無資料', dy > 0 ? 'text-emerald-400' : 'text-slate-500');
+
+    } catch(e) {
+      console.error('V2 health error:', e);
+    }
+  }
+
+  // #2 籌碼雷達 — 使用 /chip?history_days=20 取真實歷史
+  async function loadV2Chip(ticker) {
+    try {
+      const res = await fetch(`${BASE}/chip/${ticker}?history_days=20`);
+      const d = await res.json();
+      const fmt = v => { const n = Number(v); return n >= 0 ? `<span class="up">+${n.toLocaleString()}</span>` : `<span class="down">${n.toLocaleString()}</span>`; };
+      document.getElementById('v2ChipForeign').innerHTML = fmt(d.foreignNet);
+      document.getElementById('v2ChipTrust').innerHTML = fmt(d.investTrustNet);
+      document.getElementById('v2ChipDealer').innerHTML = fmt(d.dealerNet);
+      document.getElementById('v2ChipTotal').innerHTML = fmt(d.total);
+
+      let radarData;
+      if (d.history && d.history.length) {
+        const sumKey = (key) => d.history.reduce((a, h) => a + (h[key] || 0), 0);
+        const f = Math.abs(sumKey('Foreign_Investor'));
+        const t = Math.abs(sumKey('Investment_Trust'));
+        const dl = Math.abs(sumKey('Dealer_Hedging') + sumKey('Dealer_self'));
+        const maxV = Math.max(f, t, dl, 1);
+        const norm = v => Math.min(100, Math.round(v / maxV * 100));
+        const inst = (norm(f) + norm(t) + norm(dl)) / 3;
+        radarData = [norm(f), norm(t), norm(dl), Math.max(5, 100 - inst), Math.round((norm(f) + norm(t)) / 2)];
+      } else {
+        const f = Math.abs(d.foreignNet), t = Math.abs(d.investTrustNet), dl = Math.abs(d.dealerNet);
+        const maxV = Math.max(f, t, dl, 1);
+        const norm = v => Math.round(v / maxV * 100);
+        radarData = [norm(f), norm(t), norm(dl), 30, Math.round((norm(f) + norm(t)) / 2)];
+      }
+
+      if (_v2RadarChart) _v2RadarChart.destroy();
+      _v2RadarChart = new Chart(document.getElementById('v2RadarCanvas'), {
+        type: 'radar',
+        data: {
+          labels: ['外資', '投信', '自營', '散戶(估)', '主力'],
+          datasets: [{
+            label: '籌碼強度',
+            data: radarData,
+            backgroundColor: 'rgba(59,130,246,0.15)',
+            borderColor: '#3b82f6',
+            borderWidth: 2,
+            pointBackgroundColor: ['#ef4444','#f59e0b','#8b5cf6','#64748b','#22c55e'],
+            pointRadius: 5,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            r: {
+              beginAtZero: true, max: 100,
+              ticks: { display: false },
+              grid: { color: '#334155' },
+              angleLines: { color: '#334155' },
+              pointLabels: { color: '#94a3b8', font: { size: 12 } }
+            }
+          }
+        }
+      });
+
+      const streakText = (v) => {
+        if (!v) return '<span class="text-slate-500">—</span>';
+        return v > 0 ? `<span class="up">連買 ${v} 天</span>` : `<span class="down">連賣 ${Math.abs(v)} 天</span>`;
+      };
+      document.getElementById('v2StreakF').innerHTML = streakText(d.foreignStreak ?? 0);
+      document.getElementById('v2StreakT').innerHTML = streakText(d.trustStreak ?? 0);
+      document.getElementById('v2StreakD').innerHTML = streakText(d.dealerStreak ?? 0);
+    } catch(e) {
+      console.error('V2 chip error:', e);
+    }
+  }
+
+  // #3 事件預警
+  async function loadV2Events(ticker) {
+    const el = document.getElementById('v2EventContent');
+    try {
+      const res = await fetch(`${BASE}/events/${ticker}`);
+      const d = await res.json();
+      const items = (d.events || []).filter(e => !e.daysLeft || e.daysLeft >= -30);
+      if (!items.length) { el.innerHTML = '<span class="text-slate-500 text-xs">近期無重要事件</span>'; return; }
+      el.innerHTML = items.map(e => {
+        const daysHtml = e.daysLeft != null
+          ? (e.daysLeft >= 0 ? `<span class="text-amber-300">（剩 ${e.daysLeft} 天）</span>` : `<span class="text-slate-500">（${-e.daysLeft} 天前）</span>`)
+          : '';
+        const date = e.date ? `<span class="text-slate-300">${e.date}</span> ${daysHtml}` : '';
+        const extra = e.extra ? `<span class="text-slate-500 ml-1">${e.extra}</span>` : '';
+        return `<span><span class="text-amber-300 font-medium">${e.label}</span> ${date}${extra}</span>`;
+      }).join('');
+    } catch(err) {
+      el.innerHTML = '<span class="text-slate-500 text-xs">事件資料載入失敗</span>';
+    }
+  }
+
+  // #4 大盤情緒 — 串接 /macro/dashboard
+  async function loadV2Macro() {
+    let data = null;
+    try {
+      const res = await fetch(`${BASE}/macro/dashboard`);
+      data = await res.json();
+    } catch(e) { console.error('V2 macro fetch error:', e); }
+
+    const spot = data?.spot ?? null;
+    const spotChg = data?.spotChange ?? null;
+    const spotPct = (spot && spotChg != null) ? (spotChg / (spot - spotChg) * 100) : null;
+    const fut = data?.futClose ?? null;
+    const futChg = data?.futChange ?? null;
+    const futPct = (fut && futChg != null) ? (futChg / (fut - futChg) * 100) : null;
+    const oi = data?.futOI ?? null;
+    const oiChg = 0;
+    const pcr = data?.pcr ?? null;
+    const skew = data?.skew ?? null;
+    const basis = data?.basis ?? null;
+    const opt = data?.atmStrike ?? null;
+    const optPct = (futPct != null) ? futPct * 5 : null;
+    const optChg = (opt && optPct != null) ? Math.round(opt * optPct / 100) : null;
+
+    const chgHtml = (v, p) => v == null || p == null ? '—' : `<span class="${v>=0?'up':'down'}">${v>=0?'+':''}${v.toFixed(0)} (${v>=0?'+':''}${p.toFixed(2)}%)</span>`;
+    document.getElementById('v2SpotPrice').textContent = spot != null ? spot.toLocaleString() : '—';
+    document.getElementById('v2SpotChg').innerHTML = chgHtml(spotChg, spotPct);
+    document.getElementById('v2FutPrice').textContent = fut != null ? fut.toLocaleString() : '—';
+    document.getElementById('v2FutChg').innerHTML = chgHtml(futChg, futPct);
+    document.getElementById('v2OptPrice').textContent = opt != null ? opt.toLocaleString() : '—';
+    document.getElementById('v2OptChg').innerHTML = chgHtml(optChg, optPct);
+    document.getElementById('v2OI').textContent = oi != null ? oi.toLocaleString() : '—';
+    document.getElementById('v2OIChg').innerHTML = '<span class="text-slate-500 text-xs">（單日）</span>';
+
+    const priceUp = spotChg != null && spotChg > 0;
+    document.getElementById('v2OISignal').textContent = '需歷史 OI 比對';
+    document.getElementById('v2OISignal').className = 'mt-1 text-xs text-slate-500';
+
+    if (pcr != null) {
+      document.getElementById('v2PCR').textContent = pcr.toFixed(2);
+      document.getElementById('v2PCR').className = `text-2xl font-bold ${pcr < 0.85 ? 'text-emerald-400' : pcr > 1.15 ? 'text-red-400' : 'text-blue-400'}`;
+      const pcrPos = Math.min(100, Math.max(0, (pcr - 0.5) / (1.5 - 0.5) * 100));
+      document.getElementById('v2PCRNeedle').style.left = pcrPos + '%';
+    } else {
+      document.getElementById('v2PCR').textContent = '—';
+    }
+
+    if (skew != null) {
+      document.getElementById('v2Skew').textContent = (skew >= 0 ? '+' : '') + skew.toFixed(1);
+      document.getElementById('v2Skew').className = `text-2xl font-bold ${Math.abs(skew) > 20 ? 'text-red-400' : Math.abs(skew) > 10 ? 'text-amber-400' : 'text-blue-400'}`;
+      document.getElementById('v2SkewSignal').textContent = skew > 20 ? '恐慌性溢價' : skew > 10 ? '略偏恐慌' : skew < -20 ? '極度樂觀' : '正常範圍';
+      document.getElementById('v2SkewSignal').className = `text-xs ${Math.abs(skew) > 20 ? 'text-red-400' : Math.abs(skew) > 10 ? 'text-amber-400' : 'text-emerald-400'}`;
+    } else {
+      document.getElementById('v2Skew').textContent = '—';
+    }
+
+    if (basis != null) {
+      document.getElementById('v2Basis').textContent = (basis >= 0 ? '+' : '') + basis.toFixed(2) + '%';
+      document.getElementById('v2Basis').className = `text-xl font-bold ${basis > 0 ? 'up' : basis < 0 ? 'down' : ''}`;
+      const basisPos = 50 + (basis / 1.0) * 50;
+      document.getElementById('v2BasisBar').style.left = Math.min(95, Math.max(5, basisPos)) + '%';
+      document.getElementById('v2BasisSignal').textContent = basis > 0.1 ? '短線資金強勢追價' : basis > 0 ? '基差翻正，動能轉強' : basis < -0.1 ? '貼水避險，市場謹慎' : '貼水常態';
+      document.getElementById('v2BasisSignal').className = `text-xs ${basis > 0 ? 'text-emerald-400' : 'text-amber-400'}`;
+    } else {
+      document.getElementById('v2Basis').textContent = '—';
+    }
+
+    ['v2Q1','v2Q2','v2Q3','v2Q4'].forEach(id => document.getElementById(id).style.borderColor = '#334155');
+
+    if (spotPct != null && futPct != null && optPct != null) {
+      const maxLev = Math.max(Math.abs(spotPct), Math.abs(futPct), Math.abs(optPct), 0.1);
+      const levW = v => Math.max(8, Math.abs(v) / maxLev * 80) + '%';
+      document.getElementById('v2LevSpot').style.width = levW(spotPct);
+      document.getElementById('v2LevSpot').textContent = (spotPct >= 0 ? '+' : '') + spotPct.toFixed(2) + '%';
+      document.getElementById('v2LevFut').style.width = levW(futPct);
+      document.getElementById('v2LevFut').textContent = (futPct >= 0 ? '+' : '') + futPct.toFixed(2) + '%';
+      document.getElementById('v2LevOpt').style.width = levW(optPct);
+      document.getElementById('v2LevOpt').textContent = (optPct >= 0 ? '+' : '') + optPct.toFixed(2) + '%';
+    }
+
+    if (data?.putMaxOIStrike && spot) {
+      const supDist = ((data.putMaxOIStrike - spot) / spot * 100).toFixed(1);
+      document.getElementById('v2Support').textContent = data.putMaxOIStrike.toLocaleString();
+      document.getElementById('v2SupportDist').textContent = `距現價 ${supDist}% (Max OI ${data.putMaxOI?.toLocaleString()} 口)`;
+    }
+    if (data?.callMaxOIStrike && spot) {
+      const resDist = ((data.callMaxOIStrike - spot) / spot * 100).toFixed(1);
+      document.getElementById('v2Resist').textContent = data.callMaxOIStrike.toLocaleString();
+      document.getElementById('v2ResistDist').textContent = `距現價 +${resDist}% (Max OI ${data.callMaxOI?.toLocaleString()} 口)`;
+    }
+
+    const decisions = [];
+    if (spotPct != null && futPct != null) {
+      const diff = futPct - spotPct;
+      decisions.push({ name: '期現乖離', val: `${diff>=0?'+':''}${diff.toFixed(2)}%`, bull: '期貨領先 ↑', bear: '期貨弱於 ↓', result: diff > 0.1 ? '偏多' : diff < -0.1 ? '偏空' : '中性' });
+    }
+    if (oi != null) {
+      decisions.push({ name: '期貨 OI', val: oi.toLocaleString(), bull: '增倉上漲 ↑', bear: '增倉下跌 ↓', result: '中性' });
+    }
+    if (basis != null) {
+      decisions.push({ name: '基差', val: `${basis>=0?'+':''}${basis.toFixed(2)}%`, bull: '>0.1% 溢價', bear: '<-0.1% 貼水', result: basis > 0.1 ? '偏多' : basis < -0.1 ? '偏空' : '中性' });
+    }
+    if (pcr != null) {
+      decisions.push({ name: 'PCR', val: pcr.toFixed(2), bull: '<0.85 追價', bear: '>1.15 防護', result: pcr < 0.85 ? '偏多' : pcr > 1.15 ? '偏空' : '中性' });
+    }
+    document.getElementById('v2DecisionBody').innerHTML = decisions.map(d =>
+      `<tr class="border-t border-slate-700">
+        <td class="py-2 pr-3">${d.name}</td>
+        <td class="py-2 px-3 text-center">${d.val}</td>
+        <td class="py-2 px-3 text-center text-xs text-slate-500">${d.bull}</td>
+        <td class="py-2 px-3 text-center text-xs text-slate-500">${d.bear}</td>
+        <td class="py-2 px-3 text-center font-semibold ${d.result==='偏多'?'text-emerald-400':d.result==='偏空'?'text-red-400':'text-amber-400'}">${d.result}</td>
+      </tr>`
+    ).join('');
+
+    const bullCount = decisions.filter(d => d.result === '偏多').length;
+    const total = decisions.length;
+    const verdictEl = document.getElementById('v2Verdict');
+    if (total > 0) {
+      verdictEl.classList.remove('hidden');
+      if (bullCount * 2 >= total + 1) {
+        verdictEl.style.background = 'rgba(34,197,94,0.1)';
+        verdictEl.style.border = '1px solid rgba(34,197,94,0.3)';
+        verdictEl.innerHTML = `<span class="text-emerald-400 font-semibold">綜合研判：</span><span class="text-slate-300">${bullCount}/${total} 指標偏多，多空共識明確成型，可順勢操作。</span>`;
+      } else if (bullCount === 0) {
+        verdictEl.style.background = 'rgba(239,68,68,0.1)';
+        verdictEl.style.border = '1px solid rgba(239,68,68,0.3)';
+        verdictEl.innerHTML = `<span class="text-red-400 font-semibold">綜合研判：</span><span class="text-slate-300">無指標偏多，空方主導，留意下檔風險。</span>`;
+      } else {
+        verdictEl.style.background = 'rgba(245,158,11,0.1)';
+        verdictEl.style.border = '1px solid rgba(245,158,11,0.3)';
+        verdictEl.innerHTML = `<span class="text-amber-400 font-semibold">綜合研判：</span><span class="text-slate-300">${bullCount}/${total} 指標偏多，多空分歧，建議觀望或減倉。</span>`;
+      }
+    }
+
+    document.getElementById('v2AIText').textContent = data?.aiText || '市場狀態平穩，無特殊訊號。';
+    document.getElementById('v2AIText').className = 'text-sm text-slate-200';
+  }
+
+  // #5 主力分點 — 串接 /branch（FinMind 免費版以三大法人替代分點資料）
+  async function loadV2Branch() {
+    if (!currentTicker) return;
+    try {
+      const res = await fetch(`${BASE}/branch/${currentTicker}`);
+      const d = await res.json();
+      const ranking = d.ranking || [];
+      if (!ranking.length) {
+        document.getElementById('v2BranchList').innerHTML = '<div class="text-slate-500 text-sm text-center py-4">無資料</div>';
+        document.getElementById('v2BranchText').textContent = d.note || '無資料';
+        return;
+      }
+
+      const maxAbs = Math.max(...ranking.map(b => Math.abs(b.net)), 1);
+      document.getElementById('v2BranchList').innerHTML = ranking.map((b, i) =>
+        `<div class="flex items-center gap-3 py-2 px-3 rounded-lg" style="background:#0f172a">
+          <span class="text-blue-400 font-bold text-lg w-6">${i+1}</span>
+          <div class="flex-1">
+            <div class="text-sm font-medium text-white">${b.name}</div>
+            <div class="text-xs text-slate-500">${b.type}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-bold ${b.net>=0?'up':'down'}">${b.net>=0?'+':''}${b.net.toLocaleString()} 張</div>
+          </div>
+          <div class="w-24">
+            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div class="h-full ${b.net>=0?'bg-red-400':'bg-green-400'} rounded-full" style="width:${Math.abs(b.net)/maxAbs*100}%"></div>
+            </div>
+          </div>
+        </div>`
+      ).join('');
+
+      if (_v2BranchChart) _v2BranchChart.destroy();
+      const series = d.series || [];
+      const labels = series.map(s => s.date.slice(5));
+      const dataset = series.map(s => Math.round(s.foreign));
+      _v2BranchChart = new Chart(document.getElementById('v2BranchChart'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '外資每日淨買超(張)',
+            data: dataset,
+            backgroundColor: dataset.map(v => v >= 0 ? 'rgba(239,68,68,0.6)' : 'rgba(34,197,94,0.6)'),
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+          }
+        }
+      });
+
+      const top = ranking[0];
+      const ratio = d.foreignRatio != null ? `外資持股比 ${d.foreignRatio.toFixed(1)}%。` : '';
+      const trend = top.net > 0 ? '主力持續吃貨' : '主力出貨中';
+      document.getElementById('v2BranchText').innerHTML =
+        `近 30 日 ${top.name}累計淨買賣超 ${top.net>=0?'+':''}${top.net.toLocaleString()} 張，${trend}。${ratio}<br><span class="text-xs text-slate-500">${d.note || ''}</span>`;
+      document.getElementById('v2BranchText').className = 'text-sm text-slate-200';
+    } catch(e) {
+      document.getElementById('v2BranchText').textContent = '分點資料載入失敗：' + e.message;
+    }
+  }
+  </script>
 </body>
 </html>
