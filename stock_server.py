@@ -841,8 +841,9 @@ def get_macro_dashboard():
             opt = requests.get(f"{TAIFEX}/DailyMarketReportOpt", timeout=15).json()
             txo = [r for r in opt if r.get("Contract") == "TXO" and r.get("TradingSession") == "一般"]
             if txo and spot_close:
-                contracts = sorted({r.get("ContractMonth(Week)", "") for r in txo})
-                near_month = contracts[0] if contracts else ""
+                today_str = (opt[0].get("Date") or "") if opt else ""
+                contracts = sorted({r.get("ContractMonth(Week)", "") for r in txo if r.get("ContractMonth(Week)", "") >= today_str[:6]})
+                near_month = contracts[0] if contracts else sorted({r.get("ContractMonth(Week)", "") for r in txo})[0]
                 near_opts = [r for r in txo if r.get("ContractMonth(Week)") == near_month]
                 calls = [r for r in near_opts if r.get("CallPut") == "買權"]
                 puts = [r for r in near_opts if r.get("CallPut") == "賣權"]
@@ -852,12 +853,15 @@ def get_macro_dashboard():
                 def to_f(v):
                     try: return float(str(v).replace(",", ""))
                     except: return None
-                if calls:
-                    call_max = max(calls, key=lambda x: to_int(x.get("OpenInterest")))
+                near_band = lambda r: abs((to_f(r.get("StrikePrice")) or 0) - spot_close) <= spot_close * 0.1
+                near_calls = [r for r in calls if near_band(r)]
+                near_puts = [r for r in puts if near_band(r)]
+                if near_calls:
+                    call_max = max(near_calls, key=lambda x: to_int(x.get("OpenInterest")))
                     result["callMaxOIStrike"] = to_f(call_max.get("StrikePrice"))
                     result["callMaxOI"] = to_int(call_max.get("OpenInterest"))
-                if puts:
-                    put_max = max(puts, key=lambda x: to_int(x.get("OpenInterest")))
+                if near_puts:
+                    put_max = max(near_puts, key=lambda x: to_int(x.get("OpenInterest")))
                     result["putMaxOIStrike"] = to_f(put_max.get("StrikePrice"))
                     result["putMaxOI"] = to_int(put_max.get("OpenInterest"))
                 atm = min(calls + puts, key=lambda x: abs((to_f(x.get("StrikePrice")) or 0) - spot_close)) if (calls + puts) else None
@@ -867,9 +871,11 @@ def get_macro_dashboard():
                     atm_put = next((r for r in puts if to_f(r.get("StrikePrice")) == atm_strike), None)
                     cp = to_f(atm_call.get("Close")) if atm_call else None
                     pp = to_f(atm_put.get("Close")) if atm_put else None
-                    if cp is not None and pp is not None:
-                        result["skew"] = round(pp - cp, 2)
+                    if cp is not None and pp is not None and cp > 0:
+                        result["skew"] = round((pp - cp) / cp * 100, 2)
                         result["atmStrike"] = atm_strike
+                        result["atmCallPremium"] = cp
+                        result["atmPutPremium"] = pp
         except Exception: pass
 
         ai_parts = []
