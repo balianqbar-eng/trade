@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>影音轉學習簡報</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117;
+  --card: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --purple: #a78bfa;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 28px; }
+.wrap { max-width: 880px; margin: 0 auto; }
+
+.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.head h1 { font-size: 19px; font-weight: 700; }
+.badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+.badge.idle { background: rgba(139,148,158,.15); color: var(--muted); }
+.badge.idle .dot { background: var(--muted); }
+.badge.running { background: rgba(88,166,255,.13); color: var(--accent); }
+.badge.running .dot { background: var(--accent); animation: pulse 1.4s infinite; }
+.badge.done { background: rgba(63,185,80,.14); color: var(--green); }
+.badge.done .dot { background: var(--green); }
+.badge.failed { background: rgba(248,81,73,.14); color: var(--red); }
+.badge.failed .dot { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+.card-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+.label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.field { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 8px; font-size: 14px; outline: none; font-family: inherit; }
+.field:focus { border-color: var(--accent); }
+select.field { cursor: pointer; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+@media (max-width: 600px) { .row3 { grid-template-columns: 1fr; } }
+.foot { display: flex; justify-content: flex-end; margin-top: 4px; }
+.btn { background: var(--accent); color: #0d1117; border: none; padding: 9px 22px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+.bar-track { height: 6px; background: var(--border); border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width .4s ease; }
+.progress-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+.stage-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+.stage-row:last-child { border-bottom: none; }
+.stage-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.si-pending { background: var(--border); color: var(--muted); }
+.si-active  { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid var(--accent); }
+.si-done    { background: rgba(63,185,80,.15); color: var(--green); }
+.si-failed  { background: rgba(248,81,73,.15); color: var(--red); }
+.stage-label { flex: 1; color: var(--muted); }
+.stage-label.active { color: var(--accent); font-weight: 500; }
+.stage-label.done { color: var(--text); }
+.stage-label.failed { color: var(--red); }
+.time-chip { font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 9px; border-radius: 12px; background: rgba(255,255,255,.04); color: var(--muted); white-space: nowrap; }
+.time-chip.done { color: var(--green); background: rgba(63,185,80,.1); }
+.time-chip.active { color: var(--accent); background: rgba(88,166,255,.1); }
+.time-chip.failed { color: var(--red); background: rgba(248,81,73,.1); }
+.total-time { font-size: 13px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.total-time .done-val { color: var(--green); }
+.total-time .est-val { color: var(--muted); }
+
+.err-box { display: none; margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.4); color: #f8a9a9; font-size: 13px; }
+
+.dl-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .dl-grid { grid-template-columns: 1fr; } }
+.dl-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-decoration: none; color: var(--text); display: block; transition: border-color .15s; }
+.dl-card:hover { border-color: var(--accent); }
+.dl-eyebrow { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+.dl-name { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.dl-cta { font-size: 12px; }
+
+.result-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 12px; }
+.result-title { font-size: 15px; font-weight: 600; word-break: break-word; }
+
+.hist-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.hist-row:last-child { border-bottom: none; }
+.hist-title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text); }
+.hist-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.hist-links { display: flex; gap: 6px; flex-shrink: 0; }
+.hist-link { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
+.hist-link.slides { background: rgba(63,185,80,.12); color: var(--green); }
+.hist-link.pptx   { background: rgba(88,166,255,.12); color: var(--accent); }
+.hist-link.pdf    { background: rgba(248,81,73,.12); color: var(--red); }
+.hist-link:hover  { opacity: .8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>影音轉學習簡報</h1>
+    <span id="topBadge" class="badge idle"><span class="dot"></span>尚未開始</span>
+  </div>
+
+  <!-- 輸入卡 -->
+  <div class="card">
+    <div class="card-title">影片來源</div>
+
+    <label class="label">影片網址</label>
+    <input id="urlInput" type="url" class="field" placeholder="貼上 YouTube / Vimeo / 影片直連網址" style="margin-bottom:14px">
+
+    <div class="row3">
+      <div>
+        <label class="label">語言</label>
+        <select id="langInput" class="field">
+          <option value="auto">自動偵測</option>
+          <option value="zh">中文</option>
+          <option value="en">英文</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">截圖模式</label>
+        <select id="screenshotInput" class="field">
+          <option value="with">含截圖</option>
+          <option value="without">純文字</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">類型（可選）</label>
+        <select id="typeInput" class="field">
+          <option value="">自動判斷</option>
+          <option value="lecture">講座</option>
+          <option value="meeting">會議</option>
+          <option value="tutorial">教學</option>
+          <option value="interview">訪談</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="foot">
+      <button id="startBtn" class="btn" onclick="start()">開始轉換</button>
+    </div>
+  </div>
+
+  <!-- 進度卡 -->
+  <div id="progressCard" class="card" style="display:none">
+    <div class="progress-head">
+      <span class="card-title" style="margin-bottom:0">執行進度</span>
+      <span id="percent" style="font-size:13px;color:var(--muted)">0%</span>
+    </div>
+    <div class="bar-track" style="margin-bottom:10px">
+      <div id="bar" class="bar-fill" style="width:0%"></div>
+    </div>
+    <div class="total-time" id="totalTime" style="margin-bottom:6px">— / 預估 —</div>
+    <div id="stages"></div>
+    <div id="errBox" class="err-box"></div>
+  </div>
+
+  <!-- 歷史紀錄 -->
+  <div id="historyCard" class="card" style="display:none">
+    <div class="card-title">近期完成</div>
+    <div id="historyList"></div>
+  </div>
+
+  <!-- 下載卡 -->
+  <div id="downloadCard" class="card" style="display:none">
+    <div class="result-head">
+      <div>
+        <div class="dl-eyebrow">轉換完成</div>
+        <div id="resultTitle" class="result-title">—</div>
+      </div>
+      <span class="badge done"><span class="dot"></span>已完成</span>
+    </div>
+    <div class="dl-grid">
+      <a id="dlSlides" href="#" target="_blank" class="dl-card">
+        <div class="dl-eyebrow">線上開啟</div>
+        <div class="dl-name">Google Slides</div>
+        <div class="dl-cta" style="color:var(--green)">開啟連結 →</div>
+      </a>
+      <a id="dlPptx" href="#" class="dl-card">
+        <div class="dl-eyebrow">下載檔案</div>
+        <div class="dl-name">PPTX (.pptx)</div>
+        <div class="dl-cta" style="color:var(--accent)">下載 →</div>
+      </a>
+      <a id="dlPdf" href="#" class="dl-card">
+        <div class="dl-eyebrow">下載檔案</div>
+        <div class="dl-name">PDF (.pdf)</div>
+        <div class="dl-cta" style="color:var(--red)">下載 →</div>
+      </a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const STAGES = [
+  ['queued',           '排入佇列'],
+  ['downloading',      '下載影片'],
+  ['extracting_audio', '抽取音訊'],
+  ['transcribing',     '語音轉文字 + 場景偵測'],
+  ['analyzing',        'AI 內容分析'],
+  ['generating_slides','生成 Google Slides'],
+  ['exporting',        '匯出 PPTX / PDF'],
+  ['completed',        '完成'],
+];
+const STAGE_KEYS = STAGES.map(s => s[0]);
+let _jobId = null;
+let _poll = null;
+let _tick = null;
+let _lastJob = null;
+let _lastFetchAt = 0;
+
+function fmtSec(s) {
+  if (s == null || s < 0) return '';
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return ss > 0 ? `${m}m${ss.toString().padStart(2,'0')}s` : `${m}m`;
+}
+
+function setBadge(kind, text) {
+  const el = document.getElementById('topBadge');
+  el.className = 'badge ' + kind;
+  el.innerHTML = '<span class="dot"></span>' + text;
+}
+
+function _stageIdx(stage) {
+  const i = STAGES.findIndex(s => s[0] === stage);
+  return i < 0 ? 0 : i;
+}
+
+function renderStages(stage, status, elapsed, estimate) {
+  elapsed = elapsed || {};
+  estimate = estimate || {};
+  const cur = _stageIdx(stage);
+  const html = STAGES.map(([key, label], i) => {
+    let icoCls='si-pending', icon='', txtCls='', chip='';
+    const el = elapsed[key];
+    const est = estimate[key];
+
+    if (status === 'failed' && i === cur) {
+      icoCls='si-failed'; icon='✕'; txtCls='failed';
+      if (el) chip = `<span class="time-chip failed">${fmtSec(el)}</span>`;
+    } else if (status === 'done' || i < cur) {
+      icoCls='si-done'; icon='✓'; txtCls='done';
+      if (el) chip = `<span class="time-chip done">${fmtSec(el)}</span>`;
+    } else if (i === cur) {
+      icoCls='si-active'; icon='●'; txtCls='active';
+      if (el) chip = `<span class="time-chip active">${fmtSec(el)}</span>`;
+    } else if (est && key !== 'queued' && key !== 'completed') {
+      chip = `<span class="time-chip">約 ${fmtSec(est)}</span>`;
+    }
+    return `<div class="stage-row"><div class="stage-icon ${icoCls}">${icon}</div><div class="stage-label ${txtCls}">${label}</div>${chip}</div>`;
+  }).join('');
+  document.getElementById('stages').innerHTML = html;
+
+  let pct = 0;
+  if (status === 'done') pct = 100;
+  else pct = (cur / (STAGES.length - 1)) * 100;
+  document.getElementById('bar').style.width = pct + '%';
+  document.getElementById('percent').textContent = Math.round(pct) + '%';
+}
+
+function updateTotalTime(totalElapsed, estimatedTotal, status) {
+  const el = document.getElementById('totalTime');
+  const elapsedStr = totalElapsed ? fmtSec(totalElapsed) : '0s';
+  const estStr = estimatedTotal ? fmtSec(estimatedTotal) : '—';
+  if (status === 'done') {
+    el.innerHTML = `總計 <span class="done-val">${elapsedStr}</span> / 預估 ${estStr}`;
+  } else if (status === 'failed') {
+    el.innerHTML = `已花 ${elapsedStr} / 預估 ${estStr}`;
+  } else {
+    const remaining = Math.max(0, (estimatedTotal || 0) - (totalElapsed || 0));
+    el.innerHTML = `已花 ${elapsedStr} · 剩餘約 ${fmtSec(remaining)} <span class="est-val">(預估總計 ${estStr})</span>`;
+  }
+}
+
+function _renderJob(job, clientOffset) {
+  clientOffset = clientOffset || 0;
+  const stagesElapsed = Object.assign({}, job.stages_elapsed || {});
+  let totalElapsed = job.total_elapsed || 0;
+  if (job.status === 'running') {
+    totalElapsed += clientOffset;
+    const cur = job.stage;
+    if (STAGE_KEYS.includes(cur) && cur !== 'queued' && cur !== 'completed') {
+      const curEl = (job.current_stage_elapsed || 0) + clientOffset;
+      stagesElapsed[cur] = curEl;
+    }
+  }
+  renderStages(job.stage, job.status, stagesElapsed, job.stages_estimate || {});
+  updateTotalTime(totalElapsed, job.estimated_total || 0, job.status);
+}
+
+function _startTick() {
+  _stopTick();
+  _tick = setInterval(() => {
+    if (!_lastJob || _lastJob.status !== 'running') return;
+    _renderJob(_lastJob, (Date.now() - _lastFetchAt) / 1000);
+  }, 1000);
+}
+
+function _stopTick() {
+  if (_tick) { clearInterval(_tick); _tick = null; }
+}
+
+async function start() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) { alert('請輸入影片網址'); return; }
+
+  _jobId = null;
+  localStorage.removeItem('v2s_job_id');
+
+  document.getElementById('progressCard').style.display = 'block';
+  document.getElementById('downloadCard').style.display = 'none';
+  document.getElementById('errBox').style.display = 'none';
+  setBadge('running', '執行中');
+  renderStages('queued', 'running', {}, {});
+  updateTotalTime(0, 0, 'running');
+
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = '處理中...';
+
+  const body = {
+    url: url,
+    language: document.getElementById('langInput').value,
+    no_screenshots: document.getElementById('screenshotInput').value === 'without',
+    video_type: document.getElementById('typeInput').value,
+  };
+
+  try {
+    const r = await fetch('/jobs', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+    const data = await r.json();
+    _jobId = data.job_id;
+    localStorage.setItem('v2s_job_id', _jobId);
+    _startPoll();
+  } catch (e) {
+    showError('啟動失敗：' + (e.message || e));
+    btn.disabled = false;
+    btn.textContent = '開始轉換';
+    setBadge('failed', '失敗');
+  }
+}
+
+function _startPoll() {
+  if (_poll) clearInterval(_poll);
+  _poll = setInterval(_pollOnce, 2000);
+  _pollOnce();
+}
+
+async function _pollOnce() {
+  if (!_jobId) return;
+  try {
+    const r = await fetch('/jobs/' + _jobId);
+    if (r.status === 404) {
+      // job 已從 server 消失（不應該發生於持久化版本，但保險）
+      clearInterval(_poll); _poll = null; _stopTick();
+      _jobId = null;
+      localStorage.removeItem('v2s_job_id');
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const job = await r.json();
+    _lastJob = job;
+    _lastFetchAt = Date.now();
+    _renderJob(job, 0);
+
+    if (job.status === 'done') {
+      clearInterval(_poll); _poll = null;
+      _stopTick();
+      setBadge('done', '已完成');
+      _showDownloads(job);
+      _loadHistory();
+      const btn = document.getElementById('startBtn');
+      btn.disabled = false; btn.textContent = '開始轉換';
+    } else if (job.status === 'failed') {
+      clearInterval(_poll); _poll = null;
+      _stopTick();
+      setBadge('failed', '失敗');
+      showError(job.error || job.message || '未知錯誤');
+      const btn = document.getElementById('startBtn');
+      btn.disabled = false; btn.textContent = '重新開始';
+    } else {
+      _startTick();
+    }
+  } catch (e) {
+    // 暫時錯誤不中斷輪詢
+  }
+}
+
+async function _restoreJob() {
+  const jid = localStorage.getItem('v2s_job_id');
+  if (!jid) return;
+  try {
+    const r = await fetch('/jobs/' + jid);
+    if (r.status === 404) {
+      localStorage.removeItem('v2s_job_id');
+      return;
+    }
+    if (!r.ok) return;
+    const job = await r.json();
+    _jobId = jid;
+    _lastJob = job;
+    _lastFetchAt = Date.now();
+
+    document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('errBox').style.display = 'none';
+    document.getElementById('downloadCard').style.display = 'none';
+    if (job.url) document.getElementById('urlInput').value = job.url;
+    _renderJob(job, 0);
+
+    if (job.status === 'done') {
+      setBadge('done', '已完成');
+      _showDownloads(job);
+    } else if (job.status === 'failed') {
+      setBadge('failed', '失敗');
+      showError(job.error || job.message || '未知錯誤');
+      const btn = document.getElementById('startBtn');
+      btn.textContent = '重新開始';
+    } else {
+      setBadge('running', '執行中');
+      const btn = document.getElementById('startBtn');
+      btn.disabled = true;
+      btn.textContent = '處理中...';
+      _startPoll();
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function _relTime(ts) {
+  if (!ts) return '';
+  const diff = (Date.now() / 1000) - ts;
+  if (diff < 60) return '剛剛';
+  if (diff < 3600) return Math.floor(diff / 60) + ' 分鐘前';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' 小時前';
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + ' 天前';
+  const d = new Date(ts * 1000);
+  return (d.getMonth()+1) + '/' + d.getDate();
+}
+
+async function _loadHistory() {
+  try {
+    const r = await fetch('/jobs');
+    if (!r.ok) return;
+    const { jobs } = await r.json();
+    const done = jobs.filter(j => j.status === 'done' && j.title).slice(0, 10);
+    const card = document.getElementById('historyCard');
+    const list = document.getElementById('historyList');
+    if (!done.length) { card.style.display = 'none'; return; }
+    list.innerHTML = done.map(j => `
+      <div class="hist-row">
+        <div class="hist-title" title="${j.title || ''}">${j.title || '(無標題)'}</div>
+        <div class="hist-time">${_relTime(j.ended_at || j.started_at)}</div>
+        <div class="hist-links">
+          <a class="hist-link slides" href="/download/${j.job_id}/slides" target="_blank">Slides</a>
+          <a class="hist-link pptx"   href="/download/${j.job_id}/pptx">PPTX</a>
+          <a class="hist-link pdf"    href="/download/${j.job_id}/pdf">PDF</a>
+        </div>
+      </div>`).join('');
+    card.style.display = 'block';
+  } catch(e) {}
+}
+
+_restoreJob();
+_loadHistory();
+
+function _showDownloads(job) {
+  document.getElementById('resultTitle').textContent = job.title || '簡報';
+  document.getElementById('dlSlides').href = '/download/' + _jobId + '/slides';
+  document.getElementById('dlPptx').href   = '/download/' + _jobId + '/pptx';
+  document.getElementById('dlPdf').href    = '/download/' + _jobId + '/pdf';
+  document.getElementById('downloadCard').style.display = 'block';
+}
+
+function showError(msg) {
+  const box = document.getElementById('errBox');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+</script>
+</body>
+</html>
