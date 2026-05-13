@@ -160,11 +160,7 @@ def read_csv_rows():
 
 
 def cmd_list_pending(args):
-    rows = [
-        r
-        for r in read_csv_rows()
-        if r["needs_confirm"] == "Y" and r["status"] == "pending_confirm"
-    ]
+    rows = [r for r in read_csv_rows() if r["needs_confirm"] == "Y"]
     if not rows:
         print("無待確認項目")
         return
