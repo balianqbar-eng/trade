@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>美睫內容 3 版設計提案 · 示意稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Noto+Serif+TC:wght@300;400;500;700&family=Italiana&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cream:#F4EDE2;
+  --oat:#E5D7BD;
+  --oat-deep:#D9C9A3;
+  --sage:#A4B098;
+  --wood:#5A4A3D;
+  --wood-deep:#3D2E22;
+  --gold:#B89968;
+  --line:#C9BDA3;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Noto Serif TC","Cormorant Garamond",serif;
+  background:#EFE7D7;
+  color:var(--wood-deep);
+  padding:48px 24px 96px;
+  line-height:1.6;
+}
+.wrap{max-width:1280px;margin:0 auto}
+.page-title{
+  font-family:"Italiana","Noto Serif TC",serif;
+  font-size:42px;
+  font-weight:400;
+  text-align:center;
+  letter-spacing:.15em;
+  margin-bottom:8px;
+}
+.page-sub{
+  text-align:center;
+  font-size:13px;
+  letter-spacing:.4em;
+  color:var(--wood);
+  margin-bottom:48px;
+}
+.notice{
+  background:#FFF8EC;
+  border:1px solid var(--oat-deep);
+  border-left:4px solid var(--gold);
+  padding:16px 20px;
+  font-size:13px;
+  margin-bottom:56px;
+  color:var(--wood);
+}
+.notice b{color:var(--wood-deep)}
+.section{margin-bottom:96px}
+.section-head{
+  display:flex;align-items:baseline;gap:16px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:12px;margin-bottom:32px;
+}
+.section-head .tag{
+  font-family:"Italiana",serif;
+  font-size:48px;letter-spacing:.05em;color:var(--gold);
+}
+.section-head h2{
+  font-size:24px;font-weight:500;letter-spacing:.1em;
+}
+.section-head .desc{
+  margin-left:auto;font-size:12px;color:var(--wood);letter-spacing:.2em;
+}
+.versions{
+  display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:32px;
+  align-items:start;
+}
+@media(max-width:1024px){.versions{grid-template-columns:1fr}}
+.label{
+  font-size:11px;letter-spacing:.3em;color:var(--wood);
+  text-transform:uppercase;margin-bottom:10px;
+}
+
+/* ---------- IG 貼文 mock 1080×1350 (4:5) ---------- */
+.ig-post{
+  width:100%;aspect-ratio:4/5;border-radius:4px;overflow:hidden;
+  box-shadow:0 12px 32px rgba(60,40,20,.12);position:relative;
+}
+/* ---------- IG 限動 mock 1080×1920 (9:16) ---------- */
+.ig-story{
+  width:100%;aspect-ratio:9/16;border-radius:4px;overflow:hidden;
+  box-shadow:0 12px 32px rgba(60,40,20,.12);position:relative;
+}
+
+/* ===== 共用：眼睛 SVG placeholder ===== */
+.eye-ph{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#F0E5D2 0%,#E2D2B5 100%);
+  position:relative;
+}
+.eye-ph svg{width:55%;height:auto;opacity:.7}
+.eye-ph::after{
+  content:"示意位置 · 待替換真實照片";
+  position:absolute;bottom:8%;
+  font-size:10px;letter-spacing:.3em;color:var(--wood);opacity:.65;
+}
+
+/* ===== A 版 質感極簡 ===== */
+.A-post{background:var(--cream);display:flex;flex-direction:column}
+.A-post .photo-zone{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:14% 14% 8%;
+}
+.A-post .photo-zone .eye-ph{
+  width:100%;height:100%;border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+.A-post .photo-zone .eye-ph::after{display:none}
+.A-post .brand-foot{
+  padding:0 12% 10%;text-align:center;
+}
+.A-post .divider{
+  width:32px;height:1px;background:var(--gold);margin:0 auto 14px;
+}
+.A-post .caption{
+  font-family:"Cormorant Garamond",serif;
+  font-style:italic;font-size:14px;color:var(--wood);
+  letter-spacing:.05em;margin-bottom:10px;
+}
+.A-post .brand{
+  font-family:"Italiana",serif;font-size:13px;letter-spacing:.4em;color:var(--wood-deep);
+}
+.A-post .handle{
+  font-size:10px;letter-spacing:.3em;color:var(--wood);margin-top:4px;
+}
+
+.A-story{
+  background:linear-gradient(180deg,var(--cream) 0%,var(--oat) 100%);
+  display:flex;flex-direction:column;align-items:center;
+  padding:18% 12% 10%;
+}
+.A-story .top-mark{
+  font-family:"Italiana",serif;font-size:14px;letter-spacing:.5em;color:var(--wood);
+  margin-bottom:16px;
+}
+.A-story .photo-zone{
+  width:75%;aspect-ratio:1/1;border-radius:50%;overflow:hidden;
+  box-shadow:0 8px 24px rgba(90,74,61,.18);margin-bottom:18px;
+}
+.A-story .quote{
+  font-family:"Noto Serif TC",serif;font-weight:300;
+  font-size:13px;text-align:center;line-height:1.8;color:var(--wood);
+  letter-spacing:.06em;margin-bottom:14px;padding:0 8%;
+}
+.A-story .divider{width:24px;height:1px;background:var(--gold);margin:8px auto}
+.A-story .cta{
+  margin-top:auto;text-align:center;font-size:11px;letter-spacing:.3em;
+  color:var(--wood-deep);
+}
+
+/* ===== B 版 前後對比 ===== */
+.B-post{display:flex;flex-direction:column;background:var(--wood-deep);}
+.B-post .row{flex:1;position:relative;overflow:hidden}
+.B-post .row .eye-ph{filter:grayscale(60%) brightness(.95)}
+.B-post .row.after .eye-ph{filter:none}
+.B-post .row .tag{
+  position:absolute;top:50%;transform:translateY(-50%);
+  font-family:"Italiana",serif;font-size:18px;letter-spacing:.5em;
+  color:#FFF;background:rgba(58,46,34,.55);padding:4px 14px;
+}
+.B-post .row.before .tag{left:8%}
+.B-post .row.after .tag{right:8%}
+.B-post .splitter{
+  height:2px;background:var(--gold);position:relative;
+}
+.B-post .splitter::before{
+  content:"";position:absolute;left:50%;top:-7px;width:16px;height:16px;
+  background:var(--gold);transform:translateX(-50%) rotate(45deg);
+}
+.B-post .foot{
+  background:var(--wood-deep);color:#FFF;
+  padding:14px 8%;display:flex;justify-content:space-between;align-items:center;
+}
+.B-post .foot .title{font-family:"Italiana",serif;font-size:15px;letter-spacing:.3em}
+.B-post .foot .handle{font-size:10px;letter-spacing:.3em;opacity:.75}
+
+.B-story{
+  display:flex;flex-direction:column;background:var(--wood-deep);
+}
+.B-story .head{
+  padding:12% 8% 6%;text-align:center;color:#FFF;
+  font-family:"Noto Serif TC",serif;
+}
+.B-story .head .small{
+  font-family:"Italiana",serif;font-size:12px;letter-spacing:.5em;opacity:.7;
+}
+.B-story .head .big{font-size:22px;letter-spacing:.1em;margin-top:6px;font-weight:400}
+.B-story .row{flex:1;position:relative}
+.B-story .splitter{height:1px;background:var(--gold)}
+.B-story .foot{
+  padding:6% 8% 10%;text-align:center;color:#FFF;
+}
+.B-story .foot .handle{font-size:10px;letter-spacing:.3em;opacity:.8}
+
+/* ===== C 版 情境療癒 (Quote) ===== */
+.C-post{
+  position:relative;
+  background:
+    radial-gradient(circle at 70% 30%, rgba(164,176,152,.45) 0%, transparent 55%),
+    linear-gradient(180deg,#F0E7D5 0%,#D9C9A3 100%);
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:14% 12%;
+}
+.C-post .bg-eye{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  opacity:.18;filter:blur(6px);
+}
+.C-post .bg-eye svg{width:80%;height:auto}
+.C-post .top{position:relative;font-family:"Italiana",serif;font-size:13px;letter-spacing:.5em;color:var(--wood);}
+.C-post .quote{
+  position:relative;font-family:"Noto Serif TC",serif;
+  font-size:26px;line-height:1.6;font-weight:400;letter-spacing:.05em;
+  color:var(--wood-deep);
+}
+.C-post .quote .mark{font-family:"Cormorant Garamond",serif;font-style:italic;font-size:60px;color:var(--gold);line-height:.6;display:block;margin-bottom:8px}
+.C-post .attr{
+  position:relative;font-style:italic;font-size:14px;color:var(--wood);
+  margin-top:14px;letter-spacing:.1em;
+}
+.C-post .foot{position:relative;display:flex;justify-content:space-between;align-items:flex-end;color:var(--wood-deep)}
+.C-post .foot .brand{font-family:"Italiana",serif;font-size:13px;letter-spacing:.4em}
+.C-post .foot .handle{font-size:10px;letter-spacing:.3em;color:var(--wood)}
+
+.C-story{
+  position:relative;
+  background:
+    radial-gradient(circle at 50% 80%, rgba(164,176,152,.45) 0%, transparent 60%),
+    linear-gradient(180deg,#EFE5D2 0%,#CBBA90 100%);
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:18% 10%;
+}
+.C-story .bg-eye{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:.2;filter:blur(8px)}
+.C-story .bg-eye svg{width:90%;height:auto}
+.C-story .top{position:relative;text-align:center;font-family:"Italiana",serif;font-size:12px;letter-spacing:.5em;color:var(--wood)}
+.C-story .quote{
+  position:relative;text-align:center;font-family:"Noto Serif TC",serif;
+  font-size:20px;line-height:1.7;color:var(--wood-deep);
+  letter-spacing:.05em;font-weight:400;
+}
+.C-story .quote .mark{font-family:"Cormorant Garamond",serif;font-style:italic;font-size:54px;color:var(--gold);line-height:.6;display:block;margin-bottom:12px}
+.C-story .attr{position:relative;text-align:center;font-style:italic;font-size:13px;color:var(--wood);letter-spacing:.1em}
+.C-story .foot{position:relative;text-align:center;font-size:10px;letter-spacing:.3em;color:var(--wood-deep)}
+.C-story .foot .brand{font-family:"Italiana",serif;font-size:12px;letter-spacing:.4em;display:block;margin-bottom:4px}
+
+/* ---------- 文案區 ---------- */
+.copy-box{
+  background:#FFF8EC;border:1px solid var(--oat-deep);
+  padding:20px 22px;border-radius:4px;
+}
+.copy-box h4{
+  font-family:"Italiana",serif;font-size:14px;letter-spacing:.3em;
+  color:var(--gold);margin-bottom:12px;font-weight:400;
+}
+.copy-box .short, .copy-box .long{
+  font-family:"Noto Serif TC",serif;font-size:13px;line-height:1.85;
+  color:var(--wood-deep);margin-bottom:14px;
+  white-space:pre-line;
+}
+.copy-box .copy-label{
+  font-size:10px;letter-spacing:.3em;color:var(--wood);
+  text-transform:uppercase;margin-bottom:4px;display:block;
+}
+.copy-box .long{padding-top:12px;border-top:1px dashed var(--line);margin-top:14px}
+
+/* ---------- footer 行動方案 ---------- */
+.cta-box{
+  background:var(--wood-deep);color:#F4EDE2;
+  padding:36px 40px;border-radius:4px;margin-top:64px;
+}
+.cta-box h3{font-family:"Italiana",serif;font-size:22px;letter-spacing:.3em;margin-bottom:16px;font-weight:400}
+.cta-box ol{padding-left:22px;font-size:14px;line-height:2;font-family:"Noto Serif TC",serif}
+.cta-box ol li::marker{color:var(--gold)}
+.cta-box em{color:var(--gold);font-style:normal}
+
+.note-small{font-size:11px;color:var(--wood);margin-top:8px;text-align:center;letter-spacing:.1em}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="eye-icon" viewBox="0 0 200 80">
+    <path d="M10 50 Q100 -20 190 50" stroke="#5A4A3D" stroke-width="2" fill="none" opacity=".6"/>
+    <ellipse cx="100" cy="48" rx="40" ry="20" fill="#5A4A3D" opacity=".55"/>
+    <circle cx="100" cy="48" r="10" fill="#3D2E22"/>
+    <!-- 睫毛 -->
+    <g stroke="#3D2E22" stroke-width="1.8" stroke-linecap="round">
+      <line x1="60" y1="30" x2="55" y2="12"/>
+      <line x1="70" y1="26" x2="68" y2="6"/>
+      <line x1="82" y1="24" x2="82" y2="2"/>
+      <line x1="94" y1="22" x2="96" y2="0"/>
+      <line x1="106" y1="22" x2="104" y2="0"/>
+      <line x1="118" y1="24" x2="118" y2="2"/>
+      <line x1="130" y1="26" x2="132" y2="6"/>
+      <line x1="140" y1="30" x2="145" y2="12"/>
+    </g>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+  <div class="page-title">EYELASH CONTENT PROPOSAL</div>
+  <div class="page-sub">美睫內容 · 三版設計提案 · 示意稿</div>
+
+  <div class="notice">
+    <b>提示</b>　此為視覺設計示意稿，眼睛圖樣為 SVG 佔位符。
+    收到真實客戶照片後，照片區可直接替換，整體版型 / 字型 / 配色不變。
+    色調採用 <b>米白 + 燕麥 + 奧茉綠 + 金</b>，呼應 36-45 熟齡女性療癒高級感定位。
+  </div>
+
+  <!-- ============ A 版 ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="tag">A</div>
+      <h2>質感極簡</h2>
+      <div class="desc">QUIET · MINIMAL · EDITORIAL</div>
+    </div>
+
+    <div class="versions">
+      <div>
+        <div class="label">IG 貼文 · 1080×1350</div>
+        <div class="ig-post A-post">
+          <div class="photo-zone">
+            <div class="eye-ph"><svg><use href="#eye-icon"/></svg></div>
+          </div>
+          <div class="brand-foot">
+            <div class="divider"></div>
+            <div class="caption">Lashes by appointment.</div>
+            <div class="brand">[ 你的店名 ]</div>
+            <div class="handle">@your_ig_handle</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label">IG 限動 · 1080×1920</div>
+        <div class="ig-story A-story">
+          <div class="top-mark">TODAY</div>
+          <div class="photo-zone"><div class="eye-ph"><svg><use href="#eye-icon"/></svg></div></div>
+          <div class="quote">日系自然款 · 8mm C 卷<br>讓眼神在不經意間，多一分溫柔</div>
+          <div class="divider"></div>
+          <div class="cta">私訊「日系」優先排約</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="copy-box">
+          <h4>A · 療癒抒情</h4>
+          <span class="copy-label">SHORT · 限動 4 行</span>
+          <div class="short">日系自然款 / 8mm C 卷
+讓眼神，在不經意間多一分溫柔
+本週四五還有 2 個名額
+私訊「日系」優先排約</div>
+
+          <span class="copy-label">LONG · FB / Google 商家</span>
+          <div class="long">不是更濃，而是更像自己。
+
+日系自然款，挑的不是長度，是弧度。
+8mm C 卷剛剛好，戴口罩也能讓眼神有重量。
+
+「同事問我是不是換了眼妝」是這個月聽過最多次的話。
+
+本週四、五各剩 1 名額
+私訊預約　|　[ 你的店名 ]　|　@your_ig_handle</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ B 版 ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="tag">B</div>
+      <h2>前後對比</h2>
+      <div class="desc">BEFORE · AFTER · PROOF</div>
+    </div>
+
+    <div class="versions">
+      <div>
+        <div class="label">IG 貼文 · 1080×1350</div>
+        <div class="ig-post B-post">
+          <div class="row before">
+            <div class="eye-ph"><svg><use href="#eye-icon"/></svg></div>
+            <span class="tag">BEFORE</span>
+          </div>
+          <div class="splitter"></div>
+          <div class="row after">
+            <div class="eye-ph"><svg><use href="#eye-icon"/></svg></div>
+            <span class="tag">AFTER</span>
+          </div>
+          <div class="foot">
+            <div class="title">8MM · C 卷 · 日系款</div>
+            <div class="handle">[店名] @your_ig_handle</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label">IG 限動 · 1080×1920</div>
+        <div class="ig-story B-story">
+          <div class="head">
+            <div class="small">REAL CLIENT</div>
+            <div class="big">120 分鐘的變化</div>
+          </div>
+          <div class="row"><div class="eye-ph"><svg><use href="#eye-icon"/></svg></div></div>
+          <div class="splitter"></div>
+          <div class="row"><div class="eye-ph"><svg><use href="#eye-icon"/></svg></div></div>
+          <div class="foot">
+            <div class="handle">@your_ig_handle</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="copy-box">
+          <h4>B · 技術專業</h4>
+          <span class="copy-label">SHORT · 限動 4 行</span>
+          <div class="short">BEFORE → AFTER｜120 分鐘的變化
+8mm · C 卷 · 日系自然款
+未過度堆量，戴口罩也有神
+本週四五尚有 2 個名額</div>
+
+          <span class="copy-label">LONG · FB / Google 商家</span>
+          <div class="long">同一雙眼睛，120 分鐘的差別。
+
+選 8mm 不選 10mm，是因為「自然」不是長度問題，是密度與弧度的問題。
+C 卷是這個臉型最不會撞風格的選擇。
+
+每根單株分接、不黏結、不卡角質。
+持久度可達 4-6 週，黑膠水低敏不刺激。
+
+本週四 · 五各剩 1 名額
+私訊「日系」預約　|　[ 你的店名 ]</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ C 版 ============ -->
+  <section class="section">
+    <div class="section-head">
+      <div class="tag">C</div>
+      <h2>情境療癒</h2>
+      <div class="desc">QUOTE · MOOD · STORY</div>
+    </div>
+
+    <div class="versions">
+      <div>
+        <div class="label">IG 貼文 · 1080×1350</div>
+        <div class="ig-post C-post">
+          <div class="bg-eye"><svg><use href="#eye-icon"/></svg></div>
+          <div class="top">A CLIENT'S WORDS</div>
+          <div class="quote">
+            <span class="mark">&ldquo;</span>
+            同事問我是不是<br>換了眼妝。
+          </div>
+          <div>
+            <div class="attr">— M 小姐｜36 歲｜行銷主管</div>
+          </div>
+          <div class="foot">
+            <div class="brand">[ 你的店名 ]</div>
+            <div class="handle">@your_ig_handle</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label">IG 限動 · 1080×1920</div>
+        <div class="ig-story C-story">
+          <div class="bg-eye"><svg><use href="#eye-icon"/></svg></div>
+          <div class="top">A CLIENT'S WORDS</div>
+          <div class="quote">
+            <span class="mark">&ldquo;</span>
+            戴口罩的日子，<br>眼睛還是要美。
+          </div>
+          <div class="attr">— M 小姐</div>
+          <div class="foot">
+            <span class="brand">[ 你的店名 ]</span>
+            @your_ig_handle
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="copy-box">
+          <h4>C · 引言式</h4>
+          <span class="copy-label">SHORT · 限動 4 行</span>
+          <div class="short">「同事問我是不是換了眼妝。」
+— M 小姐
+日系自然款 · 8mm C 卷
+本週還可預約 ｜ 私訊「日系」</div>
+
+          <span class="copy-label">LONG · FB / Google 商家</span>
+          <div class="long">她說：「最近同事老是問我，是不是換了眼妝。」
+
+其實只是接了睫毛。
+但對 36 歲的她，「被人發現有變化」這件事，已經很久沒發生了。
+
+日系自然款 8mm C 卷
+我們不接「讓人一眼看見」的睫毛
+我們接「讓人多看一眼」的睫毛
+
+本週還可預約　|　[ 你的店名 ]　|　@your_ig_handle</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 行動方案 ============ -->
+  <div class="cta-box">
+    <h3>NEXT STEP</h3>
+    <ol>
+      <li>選擇你最喜歡的版本（A / B / C），或標出每版要調整的地方</li>
+      <li>提供真實素材：<em>客戶照片、店名、IG handle、款式名稱</em>，我直接替換上去產出可發布版</li>
+      <li>確認可發布後 → 進入階段 2：建半自動上稿介面（上傳照片 → 自動套版 → 一鍵下載四平台尺寸）</li>
+      <li>階段 3：串接 Meta / LINE / Google 商家 API，自動排程發布</li>
+    </ol>
+    <div class="note-small">三版若都不滿意，告訴我哪裡卡關（色調 / 字型 / 排版 / 文案），我重做三版讓你選</div>
+  </div>
+
+</div>
+</body>
+</html>
