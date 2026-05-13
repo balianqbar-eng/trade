@@ -1486,6 +1486,76 @@ def analyse_strategy(body: dict):
     return record
 
 
+@app.get("/qianshao/backtest")
+def qianshao_backtest(ticker: str, strategy_id: str, hold_days: int = 5):
+    strategies = _load_json(STRATEGIES_FILE)
+    strategy   = next((s for s in strategies if s.get("id") == strategy_id), None)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="策略不存在")
+
+    kbars = _twse_kbars(ticker.upper(), 90)
+    if len(kbars) < 30:
+        raise HTTPException(status_code=400, detail="歷史資料不足（需 30 根日K）")
+
+    tech_conds = [
+        c for c in ((strategy.get("conditions") or {}).get("technical") or [])
+        if c.get("enabled", True)
+    ]
+    if not tech_conds:
+        raise HTTPException(status_code=400, detail="此策略沒有啟用的技術面條件")
+
+    signal_indices: list[int] = []
+    trades: list[dict] = []
+
+    for i in range(26, len(kbars)):
+        try:
+            tech = strategy_engine.calc_technical(kbars[: i + 1])
+        except Exception:
+            continue
+        ind = tech["indicators"]
+        ctx = {
+            "ma5": ind["ma5"], "ma10": ind["ma10"],
+            "ma20": ind["ma20"], "ma60": ind["ma60"],
+            "k": ind["k"], "d": ind["d"], "j": ind["j"],
+            "rsi": ind["rsi"],
+            "ma_alignment": ind["ma_align_code"],
+            "trend":        ind["trend_code"],
+            "kd_cross":     ind["kd_cross"],
+            "macd_status":  ind["macd_status"],
+            "dif": ind["dif"], "dea": ind["dea"], "hist": ind["hist"],
+        }
+        if not all(strategy_engine._eval_condition(c, ctx) is True for c in tech_conds):
+            continue
+
+        exit_idx   = min(i + hold_days, len(kbars) - 1)
+        entry_px   = kbars[i]["Close"]
+        exit_px    = kbars[exit_idx]["Close"]
+        ret        = round((exit_px - entry_px) / entry_px * 100, 2) if entry_px else 0
+        signal_indices.append(i)
+        trades.append({
+            "date":       kbars[i]["ts"],
+            "entry":      entry_px,
+            "exit_date":  kbars[exit_idx]["ts"],
+            "exit":       exit_px,
+            "return_pct": ret,
+            "win":        ret > 0,
+        })
+
+    total = len(trades)
+    wins  = sum(1 for t in trades if t["win"])
+    return {
+        "kbars":          kbars,
+        "signal_indices": signal_indices,
+        "trades":         trades,
+        "stats": {
+            "total":      total,
+            "wins":       wins,
+            "win_rate":   round(wins / total * 100) if total > 0 else 0,
+            "avg_return": round(sum(t["return_pct"] for t in trades) / total, 2) if total > 0 else 0,
+        },
+    }
+
+
 @app.get("/qianshao/analysis/history")
 def list_analysis_history(ticker: str = "", strategy_id: str = "", days: int = 30):
     history = _load_json(HISTORY_FILE)

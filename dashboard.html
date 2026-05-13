@@ -6,6 +6,7 @@
   <title>股票戰情儀表板</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <style>
     .gauge-bg { fill: none; stroke: #334155; stroke-width: 18; }
     .gauge-fill { fill: none; stroke-width: 18; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
@@ -228,45 +229,96 @@
 
       <!-- K線 -->
       <div id="tab-kline" class="card hidden">
+        <!-- 模式切換 -->
         <div class="flex items-center gap-2 mb-3">
-          <button class="kline-btn active" onclick="switchKline(1,this)">1分</button>
-          <button class="kline-btn" onclick="switchKline(5,this)">5分</button>
-          <button class="kline-btn" onclick="switchKline(60,this)">60分</button>
-          <div id="bigvolInfo" class="ml-4 text-xs text-slate-400"></div>
-          <span id="klineStatus" class="ml-auto text-xs text-slate-500"></span>
+          <button id="klineModeIntraday" class="kline-btn active" onclick="_switchKlineMode('intraday')">即時</button>
+          <button id="klineModeBacktest" class="kline-btn" onclick="_switchKlineMode('backtest')">回測</button>
         </div>
-        <div id="signalBadge" class="hidden mb-3 px-3 py-2 rounded-lg text-sm font-semibold"
-             style="background:rgba(239,68,68,.15);border:1px solid #ef4444;color:#ef4444">
-          進場訊號：K &lt; 20 且 J &lt; 0 — 已記錄至 signals.csv
+
+        <!-- 即時模式 -->
+        <div id="klIntraday">
+          <div class="flex items-center gap-2 mb-3">
+            <button class="kline-btn active" onclick="switchKline(1,this)">1分</button>
+            <button class="kline-btn" onclick="switchKline(5,this)">5分</button>
+            <button class="kline-btn" onclick="switchKline(60,this)">60分</button>
+            <div id="bigvolInfo" class="ml-4 text-xs text-slate-400"></div>
+            <span id="klineStatus" class="ml-auto text-xs text-slate-500"></span>
+          </div>
+          <div id="signalBadge" class="hidden mb-3 px-3 py-2 rounded-lg text-sm font-semibold"
+               style="background:rgba(239,68,68,.15);border:1px solid #ef4444;color:#ef4444">
+            進場訊號：K &lt; 20 且 J &lt; 0 — 已記錄至 signals.csv
+          </div>
+          <div id="indGrid" class="hidden">
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">當根 K 棒</div>
+            <div class="grid grid-cols-4 gap-4 text-center mb-5">
+              <div><div id="iOpen"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">開盤</div></div>
+              <div><div id="iHigh"  class="text-2xl font-bold text-red-400">—</div><div class="text-xs text-slate-400 mt-1">最高</div></div>
+              <div><div id="iLow"   class="text-2xl font-bold text-green-400">—</div><div class="text-xs text-slate-400 mt-1">最低</div></div>
+              <div><div id="iClose" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">收盤</div></div>
+            </div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">KD（9,3,3）</div>
+            <div class="grid grid-cols-3 gap-4 text-center mb-5">
+              <div><div id="iK" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">K</div></div>
+              <div><div id="iD" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">D</div></div>
+              <div><div id="iJ" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">J</div></div>
+            </div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">MACD（12,26,9）</div>
+            <div class="grid grid-cols-3 gap-4 text-center mb-5">
+              <div><div id="iMacd" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MACD</div></div>
+              <div><div id="iSig"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Signal</div></div>
+              <div><div id="iHist" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
+            </div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">大戶大單（≥50張）</div>
+            <div class="grid grid-cols-2 gap-4 text-center">
+              <div><div id="iBigLots"   class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">累計張數</div></div>
+              <div><div id="iBigTrades" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">筆數</div></div>
+            </div>
+          </div>
         </div>
-        <div id="indGrid" class="hidden">
-          <!-- 當根 K 棒 -->
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">當根 K 棒</div>
-          <div class="grid grid-cols-4 gap-4 text-center mb-5">
-            <div><div id="iOpen"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">開盤</div></div>
-            <div><div id="iHigh"  class="text-2xl font-bold text-red-400">—</div><div class="text-xs text-slate-400 mt-1">最高</div></div>
-            <div><div id="iLow"   class="text-2xl font-bold text-green-400">—</div><div class="text-xs text-slate-400 mt-1">最低</div></div>
-            <div><div id="iClose" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">收盤</div></div>
+
+        <!-- 回測模式 -->
+        <div id="klBacktest" class="hidden">
+          <div class="flex flex-wrap items-center gap-3 mb-4">
+            <select id="btStratSelect"
+              class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 min-w-[160px]">
+              <option value="">選擇策略…</option>
+            </select>
+            <div class="flex items-center gap-2 text-sm text-slate-400">
+              <span>持有</span>
+              <input id="btHoldDays" type="number" min="1" max="30" value="5"
+                class="w-14 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-center">
+              <span>日</span>
+            </div>
+            <button onclick="runBacktest()"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">執行回測</button>
+            <span id="btStatus" class="text-xs text-slate-500"></span>
           </div>
-          <!-- KD -->
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">KD（9,3,3）</div>
-          <div class="grid grid-cols-3 gap-4 text-center mb-5">
-            <div><div id="iK" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">K</div></div>
-            <div><div id="iD" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">D</div></div>
-            <div><div id="iJ" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">J</div></div>
+          <!-- 統計區 -->
+          <div id="btStats" class="hidden grid grid-cols-4 gap-4 text-center mb-4 p-3 rounded-xl" style="background:#0f172a">
+            <div><div id="btTotal"   class="text-2xl font-bold text-blue-400">—</div><div class="text-xs text-slate-400 mt-1">訊號次數</div></div>
+            <div><div id="btWins"    class="text-2xl font-bold text-red-400">—</div><div class="text-xs text-slate-400 mt-1">獲利次數</div></div>
+            <div><div id="btWinRate" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">勝率</div></div>
+            <div><div id="btAvgRet"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">平均報酬</div></div>
           </div>
-          <!-- MACD -->
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">MACD（12,26,9）</div>
-          <div class="grid grid-cols-3 gap-4 text-center mb-5">
-            <div><div id="iMacd" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">MACD</div></div>
-            <div><div id="iSig"  class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Signal</div></div>
-            <div><div id="iHist" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
+          <!-- K線圖 -->
+          <div id="btChartWrap" class="hidden">
+            <div id="btChart" style="width:100%;height:420px"></div>
           </div>
-          <!-- 大戶大單 -->
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">大戶大單（≥50張）</div>
-          <div class="grid grid-cols-2 gap-4 text-center">
-            <div><div id="iBigLots"   class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">累計張數</div></div>
-            <div><div id="iBigTrades" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">筆數</div></div>
+          <!-- 明細表 -->
+          <div id="btTradeList" class="hidden mt-4">
+            <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">交易明細</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-slate-300">
+                <thead><tr class="text-slate-500 border-b border-slate-700">
+                  <th class="py-1 text-left">進場日</th>
+                  <th class="py-1 text-right">進場價</th>
+                  <th class="py-1 text-left">出場日</th>
+                  <th class="py-1 text-right">出場價</th>
+                  <th class="py-1 text-right">報酬%</th>
+                </tr></thead>
+                <tbody id="btTradeBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -1076,9 +1128,136 @@ function renderCDP(d) {
 
 function switchKline(interval, btn) {
   currentKlineInterval = interval;
-  document.querySelectorAll('.kline-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#klIntraday .kline-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   if (currentTicker) loadIntraday(currentTicker, interval);
+}
+
+let _btChart = null;
+
+function _switchKlineMode(mode) {
+  const isBacktest = mode === 'backtest';
+  document.getElementById('klIntraday').classList.toggle('hidden', isBacktest);
+  document.getElementById('klBacktest').classList.toggle('hidden', !isBacktest);
+  document.getElementById('klineModeIntraday').classList.toggle('active', !isBacktest);
+  document.getElementById('klineModeBacktest').classList.toggle('active', isBacktest);
+  if (isBacktest) _loadBtStrategies();
+  else if (currentTicker) loadIntraday(currentTicker, currentKlineInterval);
+}
+
+async function _loadBtStrategies() {
+  const sel = document.getElementById('btStratSelect');
+  try {
+    const list = await fetch(`${BASE}/qianshao/strategies`).then(r => r.json());
+    sel.innerHTML = '<option value="">選擇策略…</option>' +
+      list.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  } catch(e) { sel.innerHTML = '<option value="">載入失敗</option>'; }
+}
+
+async function runBacktest() {
+  if (!currentTicker) { alert('請先查詢股票'); return; }
+  const sid  = document.getElementById('btStratSelect').value;
+  const hold = parseInt(document.getElementById('btHoldDays').value) || 5;
+  const status = document.getElementById('btStatus');
+  if (!sid) { status.textContent = '請選擇策略'; return; }
+  status.textContent = '計算中…';
+  document.getElementById('btStats').classList.add('hidden');
+  document.getElementById('btChartWrap').classList.add('hidden');
+  document.getElementById('btTradeList').classList.add('hidden');
+
+  try {
+    const res = await fetch(
+      `${BASE}/qianshao/backtest?ticker=${currentTicker}&strategy_id=${sid}&hold_days=${hold}`
+    ).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.detail); }); return r.json(); });
+
+    const { kbars, signal_indices, trades, stats } = res;
+    status.textContent = `${kbars.length} 根日K`;
+
+    // 統計
+    document.getElementById('btTotal').textContent   = stats.total;
+    document.getElementById('btWins').textContent    = stats.wins;
+    const wr = document.getElementById('btWinRate');
+    wr.textContent  = stats.total ? `${stats.win_rate}%` : '—';
+    wr.className    = `text-2xl font-bold ${stats.win_rate >= 50 ? 'up' : 'down'}`;
+    const ar = document.getElementById('btAvgRet');
+    ar.textContent  = stats.total ? `${stats.avg_return > 0 ? '+' : ''}${stats.avg_return}%` : '—';
+    ar.className    = `text-2xl font-bold ${stats.avg_return >= 0 ? 'up' : 'down'}`;
+    document.getElementById('btStats').classList.remove('hidden');
+
+    // 明細
+    const tbody = document.getElementById('btTradeBody');
+    tbody.innerHTML = trades.map(t => {
+      const cls = t.win ? 'up' : 'down';
+      return `<tr class="border-b border-slate-800">
+        <td class="py-1.5">${t.date}</td>
+        <td class="py-1.5 text-right">${t.entry}</td>
+        <td class="py-1.5">${t.exit_date}</td>
+        <td class="py-1.5 text-right">${t.exit}</td>
+        <td class="py-1.5 text-right ${cls}">${t.return_pct > 0 ? '+' : ''}${t.return_pct}%</td>
+      </tr>`;
+    }).join('');
+    if (trades.length) document.getElementById('btTradeList').classList.remove('hidden');
+
+    // ECharts 日K 圖
+    const wrap = document.getElementById('btChartWrap');
+    wrap.classList.remove('hidden');
+    if (_btChart) { _btChart.dispose(); _btChart = null; }
+    _btChart = echarts.init(document.getElementById('btChart'), 'dark');
+
+    const dates  = kbars.map(b => b.ts);
+    const ohlc   = kbars.map(b => [b.Open, b.Close, b.Low, b.High]);
+    const sigSet = new Set(signal_indices);
+
+    const markPoints = signal_indices.map(i => ({
+      coord: [kbars[i].ts, kbars[i].Low * 0.995],
+      value: '買',
+      itemStyle: { color: '#22c55e' },
+      label: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+    }));
+
+    _btChart.setOption({
+      backgroundColor: '#0f172a',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        formatter(params) {
+          const p = params.find(p => p.seriesName === 'K線');
+          if (!p) return '';
+          const [o,c,l,h] = p.value;
+          return `${p.name}<br>開 ${o}  收 ${c}<br>低 ${l}  高 ${h}`;
+        }
+      },
+      grid: { left: 60, right: 20, top: 30, bottom: 60 },
+      xAxis: {
+        type: 'category', data: dates,
+        axisLabel: { color: '#94a3b8', fontSize: 10 },
+        axisLine: { lineStyle: { color: '#334155' } },
+      },
+      yAxis: {
+        type: 'value', scale: true,
+        axisLabel: { color: '#94a3b8', fontSize: 10 },
+        splitLine: { lineStyle: { color: '#1e293b' } },
+      },
+      dataZoom: [
+        { type: 'inside', start: 0, end: 100 },
+        { type: 'slider', height: 22, bottom: 8, fillerColor: 'rgba(59,130,246,.15)',
+          borderColor: '#334155', handleStyle: { color: '#3b82f6' } },
+      ],
+      series: [{
+        name: 'K線', type: 'candlestick', data: ohlc,
+        itemStyle: {
+          color: '#ef4444', color0: '#22c55e',
+          borderColor: '#ef4444', borderColor0: '#22c55e',
+        },
+        markPoint: {
+          symbol: 'triangle', symbolSize: 16,
+          data: markPoints,
+        },
+      }],
+    });
+  } catch(e) {
+    status.textContent = `失敗：${e.message}`;
+  }
 }
 
 async function loadIntraday(ticker, interval) {
