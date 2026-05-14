@@ -54,3 +54,41 @@
 - 立刻退回去查證最初的假設，承認猜錯比讓他繼續浪費時間重要
 
 **第一次寫下**：2026-05-14
+
+---
+
+## R003 — 推薦外部資源 / 跨機器指令前，必須 probe 過實際存在性
+
+**失敗訊號**（2026-05-14）
+
+同一個 session 重複犯兩次，模式相同：
+
+**事件 A**：Balian 要在 High Sierra 上裝 VPN，我說「Tailscale 1.40 系列是最後支援 High Sierra 的版本，到 `https://pkgs.tailscale.com/stable/#macos` 抓 1.40 的 pkg」。實際 `curl -I` 驗證後，`pkgs.tailscale.com/stable/Tailscale-1.40.x-macos.pkg` 全部 404，這個 URL pattern 不存在。我把他指向不存在的東西，浪費他半小時。
+
+**事件 B**：要他在 Claude Code 對話框用 `! sudo installer ...` 開頭跑 sudo 命令，我斷言「`!` prefix 會讓 sudo 拿到 tty，密碼 prompt 正常出現」。實際他跑了之後直接撞 `sudo: a terminal is required to read the password`——`!` prefix 跑的是 non-interactive shell，沒 tty。我沒驗證過 `!` 的執行模型就叫他用。
+
+**Harness 層**：觀測層（用模糊記憶當定論）+ 約束層（沒擋「未 probe 就推薦外部資源／跨機器指令」）
+
+**永久規則**
+
+當教練要建議使用者去抓某個 URL、跑某個指令、或仰賴某個外部資源時：
+
+1. **URL 推薦前必須 probe**：用 `curl -sI -o /dev/null -w "%{http_code}"` 或 WebFetch 確認 URL 真的回 200，再貼給使用者。不准只靠「我記得官網有放歷史版本」這種模糊印象。
+
+2. **跨機器 / 跨工具的執行模型不靠記憶**：`!` prefix 在 Claude Code、`do shell script` 在 osascript、`sudo -A` 的 askpass、`launchctl bootstrap` 在不同 macOS 版本——這些行為要先用一個 `echo $$ && tty` 之類的 0 風險命令乾測過，再要求使用者跑會改系統的命令。
+
+3. **舊軟體 / 舊 OS 的支援度不靠記憶**：「X 軟體哪個版本是最後支援 Y 系統」這類資訊半年就會過時。如果要推薦，先去官網 changelog / 歷史版本頁實際確認，找不到就誠實說「找不到，建議改另一條路」，不准腦補。
+
+4. **重複的失敗模式要追加規則，不准把它當「下次注意」**：同一個 session 內兩次「未驗證就推薦」算嚴重，要立刻 ratchet，不能等使用者下次又踩才寫。
+
+**已驗證的環境陷阱（這次踩到的具體事實）**
+
+- macOS 26 (Tahoe) 的 TCC 會擋 `with administrator privileges` 跑的 root 程序讀 `~/Downloads`，要先 `cp` 到 `/tmp` 才能 `installer -pkg`
+- macOS 26 的 `systemsetup -setremotelogin` 需要終端機（或呼叫程序）有 Full Disk Access 權限，CLI 無法繞，必須用 GUI 在「系統設定 → 一般 → 共享 → 遠端登入」開
+- macOS 26 上「分享 / 共享」在「一般」底下，不是左側獨立項目
+- ZeroTier 1.16 在 macOS High Sierra 上會用 feth driver，可能耗盡 kernel mbuf 池，徵兆是 `ping: sendto: Cannot allocate memory`。重開機可清空 buffer
+- ZeroTier 的「設備 ID」= Node ID（10 位十六進位），不是 Network ID（16 位十六進位）
+- macOS ZeroTier authtoken 在 `/Library/Application Support/ZeroTier/One/authtoken.secret`，user 想跑 `zerotier-cli` 要 cp 到 `~/Library/Application Support/ZeroTier/One/` 並 chown
+- 在 Claude Code 環境跑需要 sudo 的指令，正解是 `osascript -e 'do shell script "..." with administrator privileges'` 觸發 GUI 密碼 dialog，不是 `!` prefix
+
+**第一次寫下**：2026-05-14
