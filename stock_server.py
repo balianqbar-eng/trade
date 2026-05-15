@@ -641,6 +641,8 @@ def get_fundamental(ticker: str):
         pe = to_float("PEratio") if row else None
         pb = to_float("PBratio") if row else None
         dy = to_float("DividendYield") if row else None
+        twse_close = to_float("ClosePrice") if row else None
+        annual_div = round(twse_close * dy / 100, 2) if (twse_close and dy) else None
 
         eps_4q = None
         revenue_yoy = None
@@ -678,6 +680,8 @@ def get_fundamental(ticker: str):
             "revenueYoY": revenue_yoy,
             "netMargin": net_margin,
             "opMargin": op_margin,
+            "twseClose": twse_close,
+            "annualDivPerShare": annual_div,
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -1045,13 +1049,30 @@ def get_bigvol(ticker: str, lot_min: int = 50):
         ticks = p._api.ticks(contract, date=today)
         df = pd.DataFrame({**ticks})
         if df.empty:
-            return {"total_lots": 0, "big_trades": 0, "last_ts": None}
+            return {"total_lots": 0, "big_trades": 0, "net_lots": 0, "signal": "neutral", "bars": []}
         df["lots"] = df["volume"] // 1000
-        big = df[df["lots"] >= lot_min]
+        big = df[df["lots"] >= lot_min].copy()
+        if big.empty:
+            return {"total_lots": 0, "big_trades": 0, "net_lots": 0, "signal": "neutral", "bars": []}
+
+        big["minute"] = pd.to_datetime(big["ts"]).dt.strftime("%H:%M")
+        buy_m = big[big["tick_type"] == 1].groupby("minute")["lots"].sum()
+        sell_m = big[big["tick_type"] == 2].groupby("minute")["lots"].sum()
+        all_mins = sorted(set(buy_m.index) | set(sell_m.index))
+        bars = [{"t": m, "b": int(buy_m.get(m, 0)), "s": int(sell_m.get(m, 0))} for m in all_mins]
+
+        buy_total  = int(buy_m.sum())
+        sell_total = int(sell_m.sum())
+        net = buy_total - sell_total
+        threshold = max(100, int((buy_total + sell_total) * 0.2))
+        signal = "buy" if net >= threshold else "sell" if net <= -threshold else "neutral"
+
         return {
             "total_lots": int(big["lots"].sum()),
             "big_trades": int(len(big)),
-            "last_ts": str(big["ts"].iloc[-1]) if len(big) else None,
+            "net_lots": net,
+            "signal": signal,
+            "bars": bars,
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -1779,9 +1800,11 @@ def xq_watchlists():
     if not xq.is_healthy():
         raise HTTPException(status_code=503, detail="XQ 未連線")
     try:
-        return requests.get(f"{xq.base}/watchlists", timeout=8).json()
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        r = requests.get(f"{xq.base}/watchlists", timeout=8)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        raise HTTPException(status_code=503, detail="XQ 未連線（COM 未就緒，請在 Windows 桌面手動開啟 XQ 軟體）")
 
 
 @app.get("/xq/watchlist")
@@ -1797,32 +1820,51 @@ def xq_watchlist(group: str):
 
 @app.post("/start-xq")
 def start_xq():
-    import subprocess
+    import subprocess, threading
+    PRLCTL = "/usr/local/bin/prlctl"
     vm = "dcf8c674-794d-426f-95d9-8d397f211a64"
-    # 先確認 XQ 是否已在執行
-    check = subprocess.run(
-        ["prlctl", "exec", vm, "powershell", "-Command",
-         "(Get-Process daqxqlite -ErrorAction SilentlyContinue) -ne $null"],
-        capture_output=True, text=True, timeout=10,
-    )
-    if "True" in check.stdout:
-        return {"status": "already_running"}
-    subprocess.Popen(["prlctl", "exec", vm, "cmd", "/c", "schtasks /Run /TN StartXQ"])
-    return {"status": "starting"}
+
+    status_r = subprocess.run([PRLCTL, "status", vm], capture_output=True, text=True, timeout=10)
+    vm_stopped = "stopped" in status_r.stdout.lower()
+
+    if not vm_stopped:
+        check = subprocess.run(
+            [PRLCTL, "exec", vm, "powershell", "-Command",
+             "(Get-Process daqxqlite -ErrorAction SilentlyContinue) -ne $null"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if "True" in check.stdout:
+            return {"status": "already_running"}
+        subprocess.Popen([PRLCTL, "exec", vm, "cmd", "/c", "schtasks /Run /TN StartXQ"])
+        return {"status": "starting"}
+
+    def _boot_and_start():
+        subprocess.run([PRLCTL, "start", vm], timeout=120)
+        import time; time.sleep(20)
+        subprocess.Popen([PRLCTL, "exec", vm, "cmd", "/c", "schtasks /Run /TN StartXQ"])
+        time.sleep(10)
+        subprocess.Popen([
+            PRLCTL, "exec", vm, "cmd", "/c",
+            r"cd /d C:\Balian\xq_bridge && start /B C:\Users\balianwang\miniconda3\python.exe server.py",
+        ])
+
+    threading.Thread(target=_boot_and_start, daemon=True).start()
+    return {"status": "starting_vm"}
 
 
 @app.post("/restart-xq")
 def restart_xq():
     import subprocess
+    PRLCTL = "/usr/local/bin/prlctl"
     vm = "dcf8c674-794d-426f-95d9-8d397f211a64"
     kill_cmd = (
         "for /f \"tokens=5\" %p in "
         "('netstat -ano ^| findstr :8000.*LISTENING') "
         "do taskkill /F /PID %p"
     )
-    subprocess.run(["prlctl", "exec", vm, "cmd", "/c", kill_cmd], capture_output=True, timeout=10)
+    subprocess.run([PRLCTL, "exec", vm, "cmd", "/c", kill_cmd], capture_output=True, timeout=10)
     subprocess.Popen([
-        "prlctl", "exec", vm, "cmd", "/c",
+        PRLCTL, "exec", vm, "cmd", "/c",
         r"cd /d C:\Balian\xq_bridge && start /B C:\Users\balianwang\miniconda3\python.exe server.py",
     ])
     return {"status": "restarting"}

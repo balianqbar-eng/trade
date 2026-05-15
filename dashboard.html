@@ -269,10 +269,13 @@
               <div><div id="iHist" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">Histogram</div></div>
             </div>
             <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">大戶大單（≥50張）</div>
-            <div class="grid grid-cols-2 gap-4 text-center">
-              <div><div id="iBigLots"   class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">累計張數</div></div>
-              <div><div id="iBigTrades" class="text-3xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">筆數</div></div>
+            <div class="grid grid-cols-3 gap-3 text-center mb-3">
+              <div><div id="iBigLots"   class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">累計張數</div></div>
+              <div><div id="iBigTrades" class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">筆數</div></div>
+              <div><div id="iBigNet"    class="text-2xl font-bold">—</div><div class="text-xs text-slate-400 mt-1">淨買超</div></div>
             </div>
+            <div id="bigSignalBadge" class="hidden text-center text-xs font-semibold py-1 rounded-lg mb-3"></div>
+            <div id="bigvolChart" style="width:100%;height:110px"></div>
           </div>
         </div>
 
@@ -1260,6 +1263,28 @@ async function runBacktest() {
   }
 }
 
+let _bigvolChart = null;
+function _renderBigvolChart(bars) {
+  const el = document.getElementById('bigvolChart');
+  if (!el) return;
+  if (!_bigvolChart) _bigvolChart = echarts.init(el, 'dark');
+  if (!bars.length) { _bigvolChart.clear(); return; }
+  const times = bars.map(b => b.t);
+  const buyData  = bars.map(b => b.b);
+  const sellData = bars.map(b => -b.s);
+  _bigvolChart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, bottom: 20, left: 40, right: 8 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 9, color: '#64748b' }, axisLine: { lineStyle: { color: '#334155' } } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 9, color: '#64748b', formatter: v => Math.abs(v) }, axisLine: { lineStyle: { color: '#334155' } }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br>買 ${p[0].value} 張　賣 ${Math.abs(p[1]?.value ?? 0)} 張` },
+    series: [
+      { name: '大單買', type: 'bar', stack: 'v', data: buyData,  itemStyle: { color: '#ef4444' } },
+      { name: '大單賣', type: 'bar', stack: 'v', data: sellData, itemStyle: { color: '#22c55e' } },
+    ],
+  }, true);
+}
+
 async function loadIntraday(ticker, interval) {
   const status = document.getElementById('klineStatus');
   const badge  = document.getElementById('signalBadge');
@@ -1296,6 +1321,24 @@ async function loadIntraday(ticker, interval) {
 
     document.getElementById('iBigLots').textContent   = vol ? vol.total_lots.toLocaleString() : '—';
     document.getElementById('iBigTrades').textContent = vol ? vol.big_trades.toLocaleString() : '—';
+    const netEl = document.getElementById('iBigNet');
+    const sigEl = document.getElementById('bigSignalBadge');
+    if (vol && vol.net_lots != null) {
+      const net = vol.net_lots;
+      netEl.textContent = (net > 0 ? '+' : '') + net.toLocaleString();
+      netEl.className = `text-2xl font-bold ${net > 0 ? 'text-red-400' : net < 0 ? 'text-green-400' : 'text-slate-400'}`;
+      if (vol.signal !== 'neutral') {
+        sigEl.classList.remove('hidden');
+        sigEl.textContent = vol.signal === 'buy' ? '大單淨買超 — 偏多訊號' : '大單淨賣超 — 偏空訊號';
+        sigEl.className = `text-xs font-semibold py-1 rounded-lg mb-3 ${vol.signal === 'buy' ? 'bg-red-900/40 text-red-400' : 'bg-green-900/40 text-green-400'}`;
+      } else {
+        sigEl.classList.add('hidden');
+      }
+    } else {
+      netEl.textContent = '—';
+      sigEl.classList.add('hidden');
+    }
+    _renderBigvolChart(vol?.bars ?? []);
 
     document.getElementById('indGrid').classList.remove('hidden');
     status.textContent = `${data.length} 根，最後 ${new Date(last.time * 1000).toLocaleTimeString('zh-TW')}`;
@@ -2166,10 +2209,22 @@ function renderTechnical(t) {
   async function loadV2Health() {
     if (!currentTicker) return;
     try {
-      const res = await fetch(`${BASE}/fundamental/${currentTicker}`);
+      const [res, qRes] = await Promise.all([
+        fetch(`${BASE}/fundamental/${currentTicker}`),
+        fetch(`${BASE}/quote/${currentTicker}`).catch(() => null),
+      ]);
       const d = await res.json();
-      const pe = d.pe, pb = d.pb, dy = d.dividendYield;
+      const q = qRes && qRes.ok ? await qRes.json().catch(() => null) : null;
+      const realtimePrice = q?.close ?? q?.price ?? null;
+
+      // PE/殖利率：有即時價則用即時價重算，否則沿用 TWSE 昨收值
       const eps = d.eps4q, yoy = d.revenueYoY, nm = d.netMargin, om = d.opMargin;
+      const pe = (realtimePrice && eps && eps > 0) ? +(realtimePrice / eps).toFixed(1) : d.pe;
+      const dy = (realtimePrice && d.annualDivPerShare != null)
+        ? +(d.annualDivPerShare / realtimePrice * 100).toFixed(2)
+        : d.dividendYield;
+      const pb = d.pb;
+      const isRealtime = realtimePrice != null;
 
       // 維度評分（每維 0-3）
       let profitScore = 0, growthScore = 0, divScore = 0, valScore = 0;
@@ -2197,7 +2252,7 @@ function renderTechnical(t) {
       let judgPE = '—', judgPB = '—', judgYield = '—';
       let peColor = '', pbColor = '', yieldColor = '';
       if (pe != null) {
-        document.getElementById('v2PE').textContent = pe.toFixed(1) + 'x';
+        document.getElementById('v2PE').textContent = pe.toFixed(1) + 'x' + (isRealtime ? ' ⚡' : '');
         if (pe < 12) { valScore += 2; judgPE = '便宜'; peColor = 'text-emerald-400'; }
         else if (pe < 20) { valScore += 1; judgPE = '合理'; peColor = 'text-blue-400'; }
         else if (pe < 30) { judgPE = '偏高'; peColor = 'text-amber-400'; }
@@ -2221,7 +2276,7 @@ function renderTechnical(t) {
         document.getElementById('v2PBPR').className = `text-xs mt-1 ${pb < 3 ? 'text-emerald-400' : pb < 6 ? 'text-amber-400' : 'text-red-400'}`;
       }
       if (dy != null) {
-        document.getElementById('v2Yield').textContent = dy.toFixed(1) + '%';
+        document.getElementById('v2Yield').textContent = dy.toFixed(1) + '%' + (isRealtime && d.annualDivPerShare != null ? ' ⚡' : '');
         if (dy >= 5) judgYield = '優良';
         else if (dy >= 3) judgYield = '合理';
         else judgYield = '普通';
