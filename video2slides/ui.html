@@ -69,6 +69,9 @@ select.field { cursor: pointer; }
 .total-time { font-size: 13px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 .total-time .done-val { color: var(--green); }
 .total-time .est-val { color: var(--muted); }
+.total-time .over-val { color: #d29922; }
+.total-time .warn-val { color: var(--red); }
+.total-time .live-val { color: var(--accent); }
 
 .err-box { display: none; margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.4); color: #f8a9a9; font-size: 13px; }
 
@@ -92,6 +95,23 @@ select.field { cursor: pointer; }
 .hist-link.slides { background: rgba(63,185,80,.12); color: var(--green); }
 .hist-link.pptx   { background: rgba(88,166,255,.12); color: var(--accent); }
 .hist-link.pdf    { background: rgba(248,81,73,.12); color: var(--red); }
+.hist-arch { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; border: none; font-family: inherit; }
+.hist-arch.stored { background: rgba(63,185,80,.12); color: var(--green); cursor: default; }
+.hist-arch.gone   { background: rgba(255,255,255,.04); color: var(--muted); cursor: default; }
+.hist-arch.todo   { background: rgba(210,153,34,.14); color: #d29922; cursor: pointer; }
+.hist-arch.todo:hover { background: rgba(210,153,34,.26); }
+.hist-arch.todo:disabled { opacity: .5; cursor: default; }
+.arch-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.arch-bar input { flex: 1; min-width: 220px; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.arch-bar button { padding: 7px 12px; border-radius: 7px; border: 1px solid var(--border); background: rgba(210,153,34,.14); color: #d29922; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.arch-bar button:hover:not(:disabled) { background: rgba(210,153,34,.26); }
+.arch-bar button:disabled { opacity: .5; cursor: default; }
+.arch-msg { font-size: 12px; color: var(--muted); margin-bottom: 10px; min-height: 16px; }
+.arch-msg.err { color: var(--red); }
+.arch-msg.ok { color: var(--green); }
+.hist-more { margin-top: 10px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: inherit; }
+.hist-more:hover { color: var(--text); border-color: var(--accent); }
+.orphan-head { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: #d29922; margin-bottom: 4px; }
 .hist-link:hover  { opacity: .8; }
 </style>
 </head>
@@ -153,6 +173,7 @@ select.field { cursor: pointer; }
       <div id="bar" class="bar-fill" style="width:0%"></div>
     </div>
     <div class="total-time" id="totalTime" style="margin-bottom:6px">— / 預估 —</div>
+    <div class="total-time" id="liveNote" style="margin-bottom:6px;display:none"></div>
     <div id="stages"></div>
     <div id="errBox" class="err-box"></div>
   </div>
@@ -160,7 +181,17 @@ select.field { cursor: pointer; }
   <!-- 歷史紀錄 -->
   <div id="historyCard" class="card" style="display:none">
     <div class="card-title">近期完成</div>
+    <div class="arch-bar">
+      <input id="archDir" placeholder="倉庫區絕對路徑，例如 /Volumes/WD/video2slides_倉庫">
+      <button id="archAllBtn" onclick="archiveAll()">搬移全部未入庫</button>
+    </div>
+    <div class="arch-msg" id="archMsg"></div>
     <div id="historyList"></div>
+    <button id="histMore" class="hist-more" style="display:none" onclick="toggleHistAll()"></button>
+    <div id="orphanBox" style="display:none">
+      <div class="orphan-head" id="orphanHead"></div>
+      <div id="orphanList"></div>
+    </div>
   </div>
 
   <!-- 下載卡 -->
@@ -210,6 +241,7 @@ let _poll = null;
 let _tick = null;
 let _lastJob = null;
 let _lastFetchAt = 0;
+let _histShowAll = false;
 
 function fmtSec(s) {
   if (s == null || s < 0) return '';
@@ -231,7 +263,7 @@ function _stageIdx(stage) {
   return i < 0 ? 0 : i;
 }
 
-function renderStages(stage, status, elapsed, estimate) {
+function renderStages(stage, status, elapsed, estimate, stageFrac) {
   elapsed = elapsed || {};
   estimate = estimate || {};
   const cur = _stageIdx(stage);
@@ -258,7 +290,7 @@ function renderStages(stage, status, elapsed, estimate) {
 
   let pct = 0;
   if (status === 'done') pct = 100;
-  else pct = (cur / (STAGES.length - 1)) * 100;
+  else pct = ((cur + (stageFrac || 0)) / (STAGES.length - 1)) * 100;
   document.getElementById('bar').style.width = pct + '%';
   document.getElementById('percent').textContent = Math.round(pct) + '%';
 }
@@ -272,9 +304,27 @@ function updateTotalTime(totalElapsed, estimatedTotal, status) {
   } else if (status === 'failed') {
     el.innerHTML = `已花 ${elapsedStr} / 預估 ${estStr}`;
   } else {
-    const remaining = Math.max(0, (estimatedTotal || 0) - (totalElapsed || 0));
-    el.innerHTML = `已花 ${elapsedStr} · 剩餘約 ${fmtSec(remaining)} <span class="est-val">(預估總計 ${estStr})</span>`;
+    const diff = (estimatedTotal || 0) - (totalElapsed || 0);
+    if (diff > 0) {
+      el.innerHTML = `已花 ${elapsedStr} · 剩餘約 ${fmtSec(diff)} <span class="est-val">(預估總計 ${estStr})</span>`;
+    } else {
+      el.innerHTML = `已花 ${elapsedStr} · <span class="over-val">已超過預估 ${fmtSec(-diff)}，仍在執行</span> <span class="est-val">(預估總計 ${estStr})</span>`;
+    }
   }
+}
+
+// 顯示真實轉錄進度與活性；age 是 server 端算的「進度多久沒更新」
+function updateLiveNote(progress, status) {
+  const el = document.getElementById('liveNote');
+  if (!progress || status !== 'running') { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const done = fmtSec(progress.done), total = fmtSec(progress.total);
+  const pct = Math.round((progress.ratio || 0) * 100);
+  let html = `已轉錄 <span class="live-val">${done} / ${total}</span> (${pct}%)`;
+  if (progress.age > 120) {
+    html += ` · <span class="warn-val">⚠ 進度停滯 ${fmtSec(progress.age)}，可能已卡死</span>`;
+  }
+  el.innerHTML = html;
 }
 
 function _renderJob(job, clientOffset) {
@@ -289,8 +339,13 @@ function _renderJob(job, clientOffset) {
       stagesElapsed[cur] = curEl;
     }
   }
-  renderStages(job.stage, job.status, stagesElapsed, job.stages_estimate || {});
+  let progress = job.progress || null;
+  if (progress && job.status === 'running') {
+    progress = Object.assign({}, progress, { age: (progress.age || 0) + clientOffset });
+  }
+  renderStages(job.stage, job.status, stagesElapsed, job.stages_estimate || {}, progress ? progress.ratio : 0);
   updateTotalTime(totalElapsed, job.estimated_total || 0, job.status);
+  updateLiveNote(progress, job.status);
 }
 
 function _startTick() {
@@ -318,6 +373,7 @@ async function start() {
   setBadge('running', '執行中');
   renderStages('queued', 'running', {}, {});
   updateTotalTime(0, 0, 'running');
+  updateLiveNote(null, 'running');
 
   const btn = document.getElementById('startBtn');
   btn.disabled = true;
@@ -450,23 +506,177 @@ async function _loadHistory() {
     const r = await fetch('/jobs');
     if (!r.ok) return;
     const { jobs } = await r.json();
-    const done = jobs.filter(j => j.status === 'done' && j.title).slice(0, 10);
+    const all = jobs.filter(j => j.status === 'done' && j.title);
+    const done = _histShowAll ? all : all.slice(0, 10);
     const card = document.getElementById('historyCard');
     const list = document.getElementById('historyList');
-    if (!done.length) { card.style.display = 'none'; return; }
+    if (!all.length) { card.style.display = 'none'; return; }
     list.innerHTML = done.map(j => `
       <div class="hist-row">
         <div class="hist-title" title="${j.title || ''}">${j.title || '(無標題)'}</div>
         <div class="hist-time">${_relTime(j.ended_at || j.started_at)}</div>
+        ${_archChip(j)}
         <div class="hist-links">
           <a class="hist-link slides" href="/download/${j.job_id}/slides" target="_blank">Slides</a>
           <a class="hist-link pptx"   href="/download/${j.job_id}/pptx">PPTX</a>
           <a class="hist-link pdf"    href="/download/${j.job_id}/pdf">PDF</a>
         </div>
       </div>`).join('');
+    const pending = all.filter(_needsArchive).length;
+    const btn = document.getElementById('archAllBtn');
+    btn.disabled = !pending;
+    btn.textContent = pending ? `搬移全部未入庫（${pending}）` : '全部已入庫';
+
+    const more = document.getElementById('histMore');
+    if (all.length > 10) {
+      more.style.display = '';
+      more.textContent = _histShowAll ? `只顯示前 10 筆` : `顯示全部 ${all.length} 筆`;
+    } else {
+      more.style.display = 'none';
+    }
     card.style.display = 'block';
+    _loadOrphans();
   } catch(e) {}
 }
+
+function toggleHistAll() {
+  _histShowAll = !_histShowAll;
+  _loadHistory();
+}
+
+async function _loadOrphans() {
+  const box = document.getElementById('orphanBox');
+  try {
+    const r = await fetch('/orphans');
+    if (!r.ok) { box.style.display = 'none'; return; }
+    const { orphans, total_bytes } = await r.json();
+    if (!orphans.length) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    document.getElementById('orphanHead').textContent =
+      `未列管素材 ${orphans.length} 筆・${fmtBytes(total_bytes)}（沒有對應任務紀錄，UI 查不到來源）`;
+    document.getElementById('orphanList').innerHTML = orphans.map(o => `
+      <div class="hist-row">
+        <div class="hist-title" title="${o.path}">${o.name}</div>
+        <div class="hist-time">${fmtBytes(o.bytes)}</div>
+        <button class="hist-arch todo" onclick="archiveOrphan('${o.name}', this)">搬移</button>
+      </div>`).join('');
+  } catch(e) { box.style.display = 'none'; }
+}
+
+async function archiveOrphan(name, btn) {
+  const dest = _archDir();
+  if (!dest) { _archMsg('請先填倉庫區路徑', 'err'); return; }
+  if (!confirm(`確定把未列管素材\n${name}\n搬到 ${dest} ？\n搬完本機這份就不在了。`)) return;
+  btn.disabled = true;
+  btn.textContent = '搬移中…';
+  try {
+    const r = await fetch('/orphans/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dest, name }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    localStorage.setItem('v2s_arch_dir', dest);
+    _archMsg(`已搬移 ${fmtBytes(data.archived.bytes)} → ${data.archived.dest}`, 'ok');
+  } catch (e) {
+    _archMsg('搬移失敗：' + e.message, 'err');
+  }
+  _loadHistory();
+}
+
+function _needsArchive(j) {
+  return !j.archived && j.source_exists;
+}
+
+function fmtBytes(n) {
+  if (!n) return '';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
+  if (n >= 1e6) return Math.round(n / 1e6) + ' MB';
+  return Math.round(n / 1e3) + ' KB';
+}
+
+function _archChip(j) {
+  if (j.archived) {
+    const size = fmtBytes(j.archived.bytes);
+    return `<span class="hist-arch stored" title="已搬到 ${j.archived.dest}">已入庫${size ? ' ' + size : ''}</span>`;
+  }
+  if (!j.source_exists) {
+    return `<span class="hist-arch gone" title="本機已無此任務的素材目錄">無素材</span>`;
+  }
+  return `<button class="hist-arch todo" onclick="archiveOne('${j.job_id}', this)">未搬移 · 搬移</button>`;
+}
+
+function _archDir() {
+  return document.getElementById('archDir').value.trim();
+}
+
+function _archMsg(text, cls) {
+  const el = document.getElementById('archMsg');
+  el.className = 'arch-msg' + (cls ? ' ' + cls : '');
+  el.textContent = text;
+}
+
+async function _archiveJob(jobId, dest) {
+  const r = await fetch(`/jobs/${jobId}/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dest }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+  return data;
+}
+
+async function archiveOne(jobId, btn) {
+  const dest = _archDir();
+  if (!dest) { _archMsg('請先填倉庫區路徑', 'err'); return; }
+  if (!confirm(`確定把這支影片的原始素材（mp4／wav／逐字稿／截圖）搬到\n${dest}\n？\n搬完本機這份就不在了，成品 PPTX／PDF 與知識卡不受影響。`)) return;
+  btn.disabled = true;
+  btn.textContent = '搬移中…';
+  try {
+    const data = await _archiveJob(jobId, dest);
+    localStorage.setItem('v2s_arch_dir', dest);
+    _archMsg(`已搬移 ${fmtBytes(data.archived.bytes)} → ${data.archived.dest}`, 'ok');
+  } catch (e) {
+    _archMsg('搬移失敗：' + e.message, 'err');
+  }
+  _loadHistory();
+}
+
+async function archiveAll() {
+  const dest = _archDir();
+  if (!dest) { _archMsg('請先填倉庫區路徑', 'err'); return; }
+  const r = await fetch('/jobs');
+  const { jobs } = await r.json();
+  const targets = jobs.filter(j => j.status === 'done' && j.title).filter(_needsArchive);
+  if (!targets.length) { _archMsg('沒有待搬移的項目'); return; }
+  if (!confirm(`確定把 ${targets.length} 支影片的原始素材搬到\n${dest}\n？\n搬完本機那些就不在了。`)) return;
+
+  const btn = document.getElementById('archAllBtn');
+  btn.disabled = true;
+  let okCount = 0, bytes = 0;
+  const errs = [];
+  for (const j of targets) {
+    btn.textContent = `搬移中… ${okCount + errs.length + 1}/${targets.length}`;
+    try {
+      const data = await _archiveJob(j.job_id, dest);
+      okCount++; bytes += data.archived.bytes || 0;
+      localStorage.setItem('v2s_arch_dir', dest);
+    } catch (e) {
+      errs.push(`${j.title}：${e.message}`);
+    }
+  }
+  btn.textContent = '搬移全部未入庫';
+  const summary = `已搬 ${okCount}/${targets.length} 支，共 ${fmtBytes(bytes)}`;
+  _archMsg(errs.length ? `${summary}；失敗 ${errs.length} 支 — ${errs.join('；')}` : summary, errs.length ? 'err' : 'ok');
+  _loadHistory();
+}
+
+document.getElementById('archDir').value = localStorage.getItem('v2s_arch_dir') || '';
+document.getElementById('archDir').addEventListener('change', e => {
+  localStorage.setItem('v2s_arch_dir', e.target.value.trim());
+});
 
 _restoreJob();
 _loadHistory();

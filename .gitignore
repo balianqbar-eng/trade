@@ -1,9 +1,14 @@
 .env
 trade.env
 *.env
+.briefing_token
+dmr/.briefing_token
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+video2slides/credentials/
+video2slides/output/
 *.log
 *.csv
 .DS_Store

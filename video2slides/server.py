@@ -1,9 +1,11 @@
+import contextlib
 import json
 import shutil
 import sys
 import threading
 import time
 import uuid
+import wave
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +45,15 @@ class JobRequest(BaseModel):
     video_type: str = ""
 
 
+class ArchiveRequest(BaseModel):
+    dest: str
+
+
+class OrphanArchiveRequest(BaseModel):
+    dest: str
+    name: str
+
+
 _STAGE_LABEL = {
     "queued": "排隊中",
     "downloading": "下載影片中",
@@ -60,7 +71,7 @@ _EXPORT_MIME = {
     "pdf": "application/pdf",
 }
 
-# 各階段預估秒數（依據 30 分鐘影片的經驗值，僅作為 ETA 參考）
+# 各階段預估秒數（僅作為 ETA 起始值；transcribing 會依音檔長度與實測速度覆寫）
 _STAGE_ESTIMATE = {
     "downloading": 45,
     "extracting_audio": 8,
@@ -69,6 +80,9 @@ _STAGE_ESTIMATE = {
     "generating_slides": 20,
     "exporting": 12,
 }
+
+# 每秒音檔約需的轉錄秒數（mlx large-v3 / Apple Silicon 經驗值），僅在實測進度出現前使用
+_TRANSCRIBE_RATE = 0.35
 
 _TIMED_STAGES = list(_STAGE_ESTIMATE.keys())
 
@@ -125,10 +139,91 @@ def _set_stage(job_id: str, stage: str, message: str | None = None):
             job.setdefault("stages_elapsed", {})[prev] = elapsed
         job["stage"] = stage
         job["message"] = message or _STAGE_LABEL.get(stage, stage)
+        if stage != "transcribing":
+            job.pop("progress", None)
         job["_stage_start"] = now
         if "started_at" not in job:
             job["started_at"] = now
     _persist_job(job_id)
+
+
+def _resolve_job_dir(job: dict) -> Path | None:
+    job_dir = job.get("job_dir")
+    if not job_dir:
+        return None
+    p = Path(job_dir)
+    return p if p.is_absolute() else Path(__file__).parent / p
+
+
+def _dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _move_to_warehouse(src: Path, dest: str) -> dict:
+    dest_root = Path(dest.strip()).expanduser()
+    if not dest_root.is_absolute():
+        raise HTTPException(400, "倉庫路徑必須是絕對路徑")
+    if not dest_root.is_dir():
+        raise HTTPException(400, f"倉庫路徑不存在或不是資料夾：{dest_root}")
+    if dest_root.resolve() == src.resolve() or src.resolve() in dest_root.resolve().parents:
+        raise HTTPException(400, "倉庫路徑不能在素材目錄內")
+
+    target = dest_root / src.name
+    if target.exists():
+        raise HTTPException(409, f"目的地已有同名資料夾：{target}")
+
+    size = _dir_size(src)
+    shutil.move(str(src), str(target))
+    return {"dest": str(target), "at": time.time(), "bytes": size}
+
+
+def _jobs_root() -> Path:
+    return JOBS_DIR if JOBS_DIR.is_absolute() else Path(__file__).parent / JOBS_DIR
+
+
+def _orphan_dirs() -> list[Path]:
+    root = _jobs_root()
+    if not root.exists():
+        return []
+    with _jobs_lock:
+        known = {
+            str(d.resolve())
+            for d in (_resolve_job_dir(j) for j in _jobs.values())
+            if d is not None
+        }
+    return sorted(
+        d for d in root.iterdir()
+        if d.is_dir() and d.name != "_meta" and str(d.resolve()) not in known
+    )
+
+
+def _audio_duration(path: Path) -> float:
+    with contextlib.closing(wave.open(str(path))) as w:
+        return w.getnframes() / w.getframerate()
+
+
+def _set_stage_estimate(job_id: str, stage: str, seconds: float):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        est = dict(job.get("_stage_estimate") or _STAGE_ESTIMATE)
+        est[stage] = round(seconds)
+        job["_stage_estimate"] = est
+
+
+def _set_transcribe_progress(job_id: str, done_sec: float, total_sec: float):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        job["progress"] = {
+            "stage": "transcribing",
+            "done": round(done_sec, 1),
+            "total": round(total_sec, 1),
+            "ratio": min(1.0, done_sec / total_sec) if total_sec else 0.0,
+            "updated_at": time.time(),
+        }
 
 
 def _safe_filename(title: str, fallback: str) -> str:
@@ -177,9 +272,21 @@ def _run_job(job_id: str, url: str, opts: dict):
         _set_stage(job_id, "extracting_audio")
         audio_path = extract_audio(video_path, output_dir=job_dir)
 
+        audio_sec = _audio_duration(audio_path)
+        with _jobs_lock:
+            _jobs[job_id]["audio_duration"] = round(audio_sec, 1)
+        _set_stage_estimate(job_id, "transcribing", audio_sec * _TRANSCRIBE_RATE)
+
         _set_stage(job_id, "transcribing")
         with ThreadPoolExecutor(max_workers=2) as ex:
-            f_t = ex.submit(transcribe, audio_path, opts.get("language", "auto"), job_dir)
+            f_t = ex.submit(
+                transcribe,
+                audio_path,
+                opts.get("language", "auto"),
+                job_dir,
+                True,
+                lambda d, t: _set_transcribe_progress(job_id, d, t),
+            )
             f_s = ex.submit(detect_scenes, video_path, job_dir / "screenshots")
             transcript = f_t.result()
             scenes = f_s.result()
@@ -283,11 +390,16 @@ def create_job(req: JobRequest):
 @app.get("/jobs")
 def list_jobs():
     with _jobs_lock:
+        raw = list(_jobs.values())
         items = sorted(
-            ({k: v for k, v in j.items() if not k.startswith("_")} for j in _jobs.values()),
+            ({k: v for k, v in j.items() if not k.startswith("_")} for j in raw),
             key=lambda x: x.get("started_at", 0),
             reverse=True,
         )
+        dirs = {j.get("job_id"): _resolve_job_dir(j) for j in raw}
+    for it in items:
+        d = dirs.get(it.get("job_id"))
+        it["source_exists"] = bool(d and d.exists())
     return {"jobs": items}
 
 
@@ -307,9 +419,60 @@ def get_job(job_id: str):
         if started_at:
             ended_at = job.get("ended_at") or now
             out["total_elapsed"] = ended_at - started_at
-        out["stages_estimate"] = _STAGE_ESTIMATE
-        out["estimated_total"] = sum(_STAGE_ESTIMATE.values())
+
+        est = dict(job.get("_stage_estimate") or _STAGE_ESTIMATE)
+        prog = job.get("progress")
+        if prog:
+            out["progress"] = dict(prog, age=now - prog["updated_at"])
+            # 有實測進度就用實測速度外推，取代事前估算
+            if cur_stage == "transcribing" and cur_start and prog["ratio"] >= 0.05:
+                est["transcribing"] = round((now - cur_start) / prog["ratio"])
+        out["stages_estimate"] = est
+        out["estimated_total"] = sum(est.values())
         return out
+
+
+@app.post("/jobs/{job_id}/archive")
+def archive_job(job_id: str, req: ArchiveRequest):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, "job not found")
+        if job.get("status") == "running":
+            raise HTTPException(409, "此任務還在執行中，不能搬移")
+        archived = job.get("archived")
+        src = _resolve_job_dir(job)
+
+    if archived:
+        return {"ok": True, "archived": archived, "message": "先前已搬移"}
+    if src is None:
+        raise HTTPException(409, "此任務沒有素材目錄")
+    if not src.exists():
+        raise HTTPException(409, f"原始素材已不存在：{src}")
+
+    info = _move_to_warehouse(src, req.dest)
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id]["archived"] = info
+    _persist_job(job_id)
+    return {"ok": True, "archived": info}
+
+
+@app.get("/orphans")
+def list_orphans():
+    items = [
+        {"name": d.name, "path": str(d), "bytes": _dir_size(d)}
+        for d in _orphan_dirs()
+    ]
+    return {"orphans": items, "total_bytes": sum(i["bytes"] for i in items)}
+
+
+@app.post("/orphans/archive")
+def archive_orphan(req: OrphanArchiveRequest):
+    src = next((d for d in _orphan_dirs() if d.name == req.name), None)
+    if src is None:
+        raise HTTPException(404, f"找不到未列管素材：{req.name}")
+    return {"ok": True, "archived": _move_to_warehouse(src, req.dest)}
 
 
 @app.get("/download/{job_id}/{fmt}")
