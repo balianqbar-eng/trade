@@ -1,0 +1,742 @@
+<meta charset="UTF-8" />
+<title>營運指揮艙 · 架構原型</title>
+<style>
+  :root {
+    /* 殼層 · 深墨綠黑 + 珊瑚粉／蒂芬妮綠雙強調（承接營運看板既有品牌） */
+    --shell-bg: #0e1a17;
+    --shell-panel: #132420;
+    --shell-panel-2: #1a332b;
+    --shell-border: #223d35;
+    --shell-ink: #eaf5f1;
+    --shell-ink-soft: #8fb0a7;
+    --shell-ink-faint: #5a7b72;
+    --shell-accent: #ff7f6b;
+    --shell-accent-ink: #16110f;
+    --shell-accent-2: #3cc4b4;
+    --shell-warn: #f5b301;
+    --shell-danger: #ef5350;
+    --shell-good: #22a06b;
+
+    /* 畫布層 · 淺色內容區（沿用營運看板調性） */
+    --canvas-bg: #eef7f4;
+    --canvas-surface: #ffffff;
+    --canvas-surface-2: #f4faf8;
+    --canvas-border: #dcece7;
+    --canvas-ink: #1c3a36;
+    --canvas-ink-soft: #5a7d78;
+    --canvas-ink-faint: #8aa8a2;
+    --canvas-accent: #ff7f6b;
+    --canvas-accent-2: #0f9d92;
+
+    --font-ui: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--shell-bg);
+    color: var(--shell-ink);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible { outline: 2px solid var(--shell-accent-2); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* ---------- topbar ---------- */
+  .topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    background: var(--shell-panel);
+    border-bottom: 1px solid var(--shell-border);
+  }
+  .icon-btn {
+    background: transparent; border: none; color: var(--shell-ink-soft);
+    font-size: 16px; cursor: pointer; padding: 6px 8px; border-radius: 6px; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--shell-panel-2); color: var(--shell-ink); }
+
+  .create-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--shell-accent); color: var(--shell-accent-ink);
+    border: none; font-weight: 700; font-size: 13px;
+    padding: 7px 14px; border-radius: 7px; cursor: pointer; font-family: inherit;
+  }
+  .create-btn:hover { filter: brightness(1.07); }
+
+  .search {
+    flex: 1; max-width: 480px; margin: 0 auto;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--shell-bg); border: 1px solid var(--shell-border);
+    border-radius: 8px; padding: 7px 12px;
+  }
+  .search input {
+    flex: 1; background: none; border: none; color: var(--shell-ink);
+    font-family: inherit; font-size: 13px;
+  }
+  .search input::placeholder { color: var(--shell-ink-faint); }
+  .search input:focus { outline: none; }
+  .search span { color: var(--shell-ink-faint); font-size: 13px; }
+
+  .avatar-badge {
+    width: 28px; height: 28px; border-radius: 999px; flex: none;
+    background: var(--shell-accent-2); color: #06211d;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; cursor: pointer; border: none;
+    font-family: inherit;
+  }
+
+  /* ---------- layout ---------- */
+  .layout { flex: 1; display: flex; min-height: 0; position: relative; }
+  .scrim { display: none; }
+
+  .sidebar {
+    flex: none; width: 232px;
+    background: var(--shell-panel);
+    border-right: 1px solid var(--shell-border);
+    overflow-y: auto;
+    padding: 10px 8px 20px;
+  }
+
+  .nav-group { margin-bottom: 2px; }
+  .nav-cat-row { display: flex; align-items: center; gap: 2px; padding-right: 6px; border-radius: 7px; }
+  .nav-cat-row:hover { background: var(--shell-panel-2); }
+  .nav-cat {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; color: var(--shell-ink);
+    font-family: inherit; font-size: 13.5px; font-weight: 700;
+    padding: 9px 8px; border-radius: 7px; cursor: pointer; text-align: left;
+  }
+  .nav-label { flex: 1; }
+  .nav-tag {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    color: var(--shell-ink-faint); letter-spacing: .04em;
+  }
+  .info-btn {
+    flex: none; width: 20px; height: 20px; border-radius: 999px;
+    border: 1px solid var(--shell-border); background: transparent;
+    color: var(--shell-ink-faint); font-size: 11px; line-height: 1;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    padding: 0; font-family: inherit; transition: color .15s, border-color .15s, background .15s;
+  }
+  .info-btn:hover { color: var(--shell-accent-2); border-color: var(--shell-accent-2); }
+  .nav-group.noted .info-btn { color: var(--shell-accent-2); border-color: var(--shell-accent-2); background: rgba(60,196,180,.12); }
+  .nav-note {
+    display: none;
+    margin: 2px 6px 6px 40px; padding: 8px 10px;
+    background: var(--shell-bg); border: 1px solid var(--shell-border);
+    border-left: 2px solid var(--shell-accent-2);
+    border-radius: 0 7px 7px 0;
+    font-size: 12px; color: var(--shell-ink-soft); line-height: 1.55;
+  }
+  .nav-group.noted .nav-note { display: block; }
+  .nav-mono {
+    width: 22px; height: 22px; border-radius: 6px; flex: none;
+    background: var(--shell-panel-2); color: var(--shell-accent-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; font-family: var(--font-mono);
+  }
+  .nav-cat .chev { flex: none; color: var(--shell-ink-faint); font-size: 10px; transition: transform .15s; }
+  .nav-group.expanded .nav-cat .chev { transform: rotate(90deg); }
+
+  .nav-items { display: none; flex-direction: column; padding: 2px 6px 8px 40px; gap: 1px; }
+  .nav-group.expanded .nav-items { display: flex; }
+
+  .nav-item {
+    background: none; border: none; color: var(--shell-ink-soft);
+    font-family: inherit; font-size: 12.5px; text-align: left;
+    padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    position: relative;
+  }
+  .nav-item:hover { background: var(--shell-panel-2); color: var(--shell-ink); }
+  .nav-item.active { background: var(--shell-panel-2); color: var(--shell-ink); font-weight: 700; }
+  .nav-item.active::before {
+    content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 14px; border-radius: 2px; background: var(--shell-accent-2);
+  }
+
+  /* ---------- main / panes ---------- */
+  .main { flex: 1; overflow: auto; background: var(--canvas-bg); min-width: 0; }
+  .pane { height: 100%; }
+  .pane[hidden] { display: none; }
+
+  .pane-inner { max-width: 980px; margin: 0 auto; padding: 34px 28px 60px; }
+
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--canvas-ink-faint); font-family: var(--font-mono);
+  }
+  .greet h1 { font-size: 24px; margin: 4px 0 0; color: var(--canvas-ink); text-wrap: balance; }
+
+  .home-grid {
+    display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-top: 22px;
+  }
+  @media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--canvas-surface); border: 1px solid var(--canvas-border);
+    border-radius: 12px; padding: 16px 18px; box-shadow: 0 4px 18px rgba(20,60,55,.06);
+  }
+  .panel h2 { font-size: 13.5px; margin: 0 0 12px; color: var(--canvas-ink); }
+
+  .task-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--canvas-surface-2); font-size: 13px; }
+  .task-row:last-child { border-bottom: none; }
+  .task-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--canvas-accent-2); }
+  .task-row .t { flex: 1; color: var(--canvas-ink); }
+  .task-row.done .t { text-decoration: line-through; color: var(--canvas-ink-faint); }
+  .task-row .due { font-family: var(--font-mono); font-size: 11px; color: var(--canvas-ink-soft); }
+
+  .project-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  }
+  .project-mono {
+    width: 32px; height: 32px; border-radius: 8px; flex: none;
+    background: var(--canvas-surface-2); border: 1px solid var(--canvas-border);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 12px; color: var(--canvas-accent-2);
+  }
+  .project-row .name { font-size: 13.5px; font-weight: 600; color: var(--canvas-ink); }
+  .project-row .sub { font-size: 11px; color: var(--canvas-ink-soft); font-family: var(--font-mono); }
+  .project-row .open {
+    margin-left: auto; font-size: 12px; background: var(--canvas-surface-2);
+    border: 1px solid var(--canvas-border); color: var(--canvas-ink); border-radius: 6px;
+    padding: 5px 10px; cursor: pointer; font-family: inherit;
+  }
+  .project-row .open:hover { border-color: var(--canvas-accent-2); }
+
+  .ghost-add {
+    width: 100%; margin-top: 4px; text-align: left; background: none;
+    border: 1px dashed var(--canvas-border); color: var(--canvas-ink-faint);
+    padding: 8px 10px; border-radius: 7px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .ghost-add:hover { border-color: var(--canvas-accent); color: var(--canvas-ink); }
+
+  /* ---------- ops pane ---------- */
+  .pane[data-pane="ops"], .pane[data-pane="reflection"], .pane[data-pane="finance"], .pane[data-pane="tvm"], .pane[data-pane="xiaoji-checkin"], .pane[data-pane="people-profile"], .pane[data-pane="inventory"] { padding: 0; }
+  .pane[data-pane="ops"] iframe, .pane[data-pane="reflection"] iframe, .pane[data-pane="finance"] iframe, .pane[data-pane="tvm"] iframe, .pane[data-pane="xiaoji-checkin"] iframe, .pane[data-pane="people-profile"] iframe, .pane[data-pane="inventory"] iframe {
+    width: 100%; height: 100%; border: none; display: block;
+  }
+
+  /* ---------- report pane ---------- */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px; }
+  @media (max-width: 700px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat-tile {
+    background: var(--canvas-surface); border: 1px solid var(--canvas-border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .stat-tile .label { font-size: 11px; color: var(--canvas-ink-faint); text-transform: uppercase; letter-spacing: .04em; }
+  .stat-tile .value { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 4px; color: var(--canvas-ink); }
+  .stat-tile.warn .value { color: var(--shell-danger); }
+
+  .bar-list { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 96px 1fr 34px; align-items: center; gap: 10px; }
+  .bar-row .lbl { font-size: 12.5px; color: var(--canvas-ink); }
+  .bar-track { height: 8px; background: var(--canvas-surface-2); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+  .bar-row .n { font-family: var(--font-mono); font-size: 12px; color: var(--canvas-ink-soft); text-align: right; }
+
+  .report-section { margin-top: 22px; }
+  .report-section h3 { font-size: 12.5px; color: var(--canvas-ink-soft); margin: 0 0 12px; font-weight: 700; }
+
+  .jump-btn {
+    margin-top: 22px; background: var(--canvas-accent-2); color: #fff; border: none;
+    padding: 8px 14px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+
+  /* ---------- placeholder pane ---------- */
+  .placeholder-wrap {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 40px;
+  }
+  .ph-detail { margin-top: 26px; text-align: left; max-width: 560px; border-top: 1px solid var(--shell-border, rgba(255,255,255,.1)); padding-top: 18px; }
+  .ph-row { display: grid; grid-template-columns: 76px 1fr; gap: 14px; margin-bottom: 12px; align-items: baseline; }
+  .ph-k { font-size: 11.5px; letter-spacing: .1em; color: var(--shell-ink-soft, #7d938e); }
+  .ph-v { font-size: 13.5px; line-height: 1.75; }
+  .ph-evi { color: var(--shell-ink-soft, #9fb3ae); font-size: 12.5px; }
+  .ph-status { display: inline-block; padding: 2px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .ph-ready { background: rgba(15,157,146,.18); color: #4fd6c6; }
+  .ph-partial { background: rgba(184,115,15,.18); color: #e0a94f; }
+  .ph-decide { background: rgba(74,114,196,.2); color: #8ca8e8; }
+  .ph-blocked { background: rgba(181,80,60,.18); color: #e08a78; }
+  .ph-asof { font-size: 11px; color: var(--shell-ink-soft, #6b807c); margin-top: 14px; }
+  .placeholder-badge {
+    font-family: var(--font-mono); font-size: 11px; color: var(--canvas-accent-2);
+    background: rgba(15,157,146,.1); border: 1px solid rgba(15,157,146,.25);
+    padding: 4px 12px; border-radius: 999px; margin-bottom: 14px;
+  }
+  .placeholder-wrap h2 { font-size: 19px; color: var(--canvas-ink); margin: 0 0 8px; text-wrap: balance; }
+  .placeholder-wrap p { font-size: 13.5px; color: var(--canvas-ink-soft); max-width: 380px; line-height: 1.6; margin: 0; }
+
+  /* ---------- toast ---------- */
+  #shellToast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(16px);
+    background: var(--shell-panel-2); border: 1px solid var(--shell-border); color: var(--shell-ink);
+    padding: 10px 16px; border-radius: 8px; font-size: 12.5px; z-index: 500;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  #shellToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--shell-border); border-radius: 6px; }
+
+  /* ---------- 行動作業：平板 / 手機 ---------- */
+  @media (max-width: 1024px) {
+    .sidebar {
+      position: absolute; inset: 0 auto 0 0; z-index: 40;
+      transform: translateX(-100%); transition: transform .22s ease;
+      box-shadow: 6px 0 28px rgba(0,0,0,.35);
+    }
+    body.nav-open .sidebar { transform: translateX(0); }
+    .scrim {
+      display: block; position: absolute; inset: 0; z-index: 30; border: none;
+      background: rgba(6,18,15,.5); opacity: 0; pointer-events: none; transition: opacity .22s;
+    }
+    body.nav-open .scrim { opacity: 1; pointer-events: auto; }
+    .search { max-width: none; margin: 0; }
+  }
+  @media (max-width: 640px) {
+    .topbar { gap: 8px; padding: 8px 10px; }
+    .search { display: none; }
+    .create-btn { padding: 8px 12px; }
+    .pane-inner { padding: 16px 12px 32px; }
+  }
+</style>
+
+<div class="topbar">
+  <button class="icon-btn" type="button" id="navToggle" title="選單" aria-label="開關側邊選單">☰</button>
+  <button class="create-btn" type="button" id="createBtn">＋ 建立</button>
+  <div class="search">
+    <span>搜尋</span>
+    <input id="searchInput" type="text" placeholder="搜尋任務、專案…" />
+  </div>
+  <button class="icon-btn" type="button" title="說明">?</button>
+  <button class="avatar-badge" type="button" id="avatarBtn" title="個人資料">B</button>
+</div>
+
+<div class="layout">
+  <button class="scrim" id="scrim" type="button" aria-label="關閉選單"></button>
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-group expanded" data-cat="work">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">工</span><span class="nav-label">工作</span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="工作 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">專案與任務的執行現場：戰情表、卡片、進度</div>
+      <div class="nav-items">
+        <button class="nav-item active" type="button" data-pane="home">首頁</button>
+        <button class="nav-item" type="button" data-pane="ops">專案：營運看板</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="agents">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">AI</span><span class="nav-label">代理程式</span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="代理程式 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">讓 AI 認養卡片、自動跑流程。看板還沒有可寫入的 API，尚未接通</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="AI 隊友" data-desc="讓 AI 直接認養營運看板上的卡片、自動更新狀態——等看板欄位與 SOP 穩定後再接。" data-blocker="營運看板的欄位與 SOP 穩定，且看板要有可寫入的介面" data-status="partial" data-evidence="結構已有：看板 3 條事業線＋可設定欄位（含「事業線／欄位」設定介面）。但卡片存在瀏覽器 localStorage（ops_kanban_v1），沒有 API 可讓 AI 寫入 —— 這是真正的硬阻塞。">AI 隊友</button>
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="工作流程" data-desc="規則、專案範本、表單、自訂欄位。等營運看板的欄位定義確定後再抽象成範本。" data-blocker="營運看板的欄位定義確定，才抽象成範本" data-status="partial" data-evidence="欄位結構在了，但看板本身就提供「事業線／欄位」設定介面，代表欄位是設計成會變的。要抽範本得先決定哪些欄位算穩定。">工作流程</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="strategy">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">策</span><span class="nav-label">策略行銷<span class="nav-tag">（MM）</span></span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="策略 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">目標設定、報告、資源配置與對外行銷</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="目標" data-desc="把事業線的季度目標掛到看板進度上，自動算達成率。" data-blocker="有結構化的季度目標資料源" data-status="ready" data-evidence="目標.md 已有 V1→V3 三版主目標、M1 里程碑與 done-condition，可直接渲染成進度。">目標</button>
+        <button class="nav-item" type="button" data-pane="reports">報告</button>
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="資源配置" data-desc="跨事業線的人力工時甘特圖，需要先有工時資料來源。" data-blocker="要先有工時資料來源" data-status="ready" data-evidence="DMR 已累積 73 筆、涵蓋 19 個專案，含 duration_min 與 appetite_min（預算 vs 實際），甘特圖與工時分佈都畫得出來。">資源配置</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="knowledge">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">知</span><span class="nav-label">知識<span class="nav-tag">（RD）</span></span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="知識 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">SOP、文件、會議記錄與研究產出</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="頁面" data-desc="SOP、會議記錄用文件頁面管理，可能直接沿用 Obsidian Vault 而不重做。" data-blocker="先決定要重做，還是沿用 Obsidian Vault" data-status="decide" data-evidence="Vault 已有 123 篇 .md 且分好八個分區。重做一套文件管理的理由不強，這是決策問題不是技術問題。">頁面</button>
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="會議" data-desc="會議記錄自動轉草稿任務、餵回營運看板待辦池。" data-blocker="要先有會議記錄的資料源" data-status="blocked" data-evidence="Vault 八個分區裡沒有會議記錄分類，目前沒有任何會議資料進得來。">會議</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="people">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">人</span><span class="nav-label">人員<span class="nav-tag">（HR）</span></span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="人員 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">個人資料、團隊名單、出勤打卡</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="people-profile">個人資料</button>
+        <button class="nav-item" type="button" data-pane="placeholder" data-title="團隊" data-desc="家人 / 外包協作者名單與各自負責的事業線。">團隊</button>
+        <button class="nav-item" type="button" data-pane="xiaoji-checkin">小雞打卡出勤紀錄</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="ops-infra">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">設</span><span class="nav-label">設備<span class="nav-tag">（IT）</span></span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="設備 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">硬體、工具、系統資產的清點與管理</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="inventory">設備管理</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="life">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">生</span><span class="nav-label">生活</span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="生活 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">每日反思與習慣打卡</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="reflection">每日反思 · 習慣打卡</button>
+      </div>
+    </div>
+
+    <div class="nav-group" data-cat="wealth">
+      <div class="nav-cat-row"><button class="nav-cat" type="button"><span class="nav-mono">理</span><span class="nav-label">理財</span><span class="chev">▸</span></button><button class="info-btn" type="button" aria-label="理財 說明" aria-expanded="false">ⓘ</button></div><div class="nav-note">記帳整合與財務試算工具</div>
+      <div class="nav-items">
+        <button class="nav-item" type="button" data-pane="finance">記帳整合 UI</button>
+        <button class="nav-item" type="button" data-pane="tvm">CFP 試算機 · TVM</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="pane" data-pane="home">
+      <div class="pane-inner">
+        <div class="greet">
+          <div class="eyebrow" id="todayLabel"></div>
+          <h1 id="greetLabel">Balian，早安</h1>
+        </div>
+
+        <div class="home-grid">
+          <div class="panel">
+            <h2>我的任務</h2>
+            <div class="task-row">
+              <input type="checkbox" />
+              <span class="t">確認看板欄位對應到真實三條事業線</span>
+              <span class="due">今天</span>
+            </div>
+            <div class="task-row">
+              <input type="checkbox" />
+              <span class="t">跟太太確認度假村本週卡關事項</span>
+              <span class="due">8/8</span>
+            </div>
+            <div class="task-row done">
+              <input type="checkbox" checked />
+              <span class="t">把營運看板串進這個殼層</span>
+              <span class="due">已完成</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>專案</h2>
+            <div class="project-row">
+              <div class="project-mono">營</div>
+              <div>
+                <div class="name">營運看板</div>
+                <div class="sub" id="opsCountLabel">讀取中…</div>
+              </div>
+              <button class="open" type="button" data-pane="ops">開啟</button>
+            </div>
+            <button class="ghost-add" type="button" id="newProjectBtn">＋ 建立專案</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="ops" hidden>
+      <iframe id="opsFrame" title="營運看板" src="營運看板.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="reflection" hidden>
+      <iframe title="每日反思" src="daily-reflection.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="finance" hidden>
+      <iframe title="記帳整合 UI" src="記帳整合UI_原型.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="tvm" hidden>
+      <iframe title="CFP 試算機 · TVM" src="CFP_貨幣時間價值計算機_v01.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="inventory" hidden>
+      <iframe title="設備管理" src="設備管理.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="people-profile" hidden>
+      <iframe id="profileFrame" title="人員個人資料" src="人員個人資料.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="xiaoji-checkin" hidden>
+      <iframe id="checkinFrame" title="小雞打卡出勤紀錄" src="小雞打卡出勤紀錄.html"></iframe>
+    </div>
+
+    <div class="pane" data-pane="reports" hidden>
+      <div class="pane-inner">
+        <div class="eyebrow">策略 · 報告</div>
+        <div class="greet"><h1>團隊工作儀表板</h1></div>
+        <p style="color:var(--canvas-ink-soft);font-size:13px;margin-top:4px">資料直接讀營運看板的即時狀態，不是另外填的報表。</p>
+
+        <div class="stat-grid" id="reportStats"></div>
+
+        <div class="report-section">
+          <h3>各事業線在製品</h3>
+          <div class="bar-list" id="reportLanes"></div>
+        </div>
+
+        <div class="report-section">
+          <h3>各服務等級在製品</h3>
+          <div class="bar-list" id="reportCos"></div>
+        </div>
+
+        <button class="jump-btn" type="button" data-pane="ops">打開營運看板</button>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="placeholder" hidden>
+      <div class="placeholder-wrap">
+        <span class="placeholder-badge" id="phBadge">即將推出</span>
+        <h2 id="phTitle"></h2>
+        <p id="phDesc"></p>
+        <div class="ph-detail" id="phDetail" hidden>
+          <div class="ph-row">
+            <span class="ph-k">前置條件</span>
+            <span class="ph-v" id="phBlocker"></span>
+          </div>
+          <div class="ph-row">
+            <span class="ph-k">現況</span>
+            <span class="ph-v"><span class="ph-status" id="phStatus"></span></span>
+          </div>
+          <div class="ph-row">
+            <span class="ph-k">查證</span>
+            <span class="ph-v ph-evi" id="phEvidence"></span>
+          </div>
+          <div class="ph-asof" id="phAsOf"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="shellToast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORE_KEY = "ops_kanban_v1";
+
+  /* ---------- pane switching ---------- */
+  function showPane(id) {
+    document.querySelectorAll(".pane").forEach(function (p) {
+      p.hidden = p.dataset.pane !== id;
+    });
+    if (id === "reports") renderReport();
+  }
+
+  function setActiveNav(el) {
+    document.querySelectorAll(".nav-item").forEach(function (n) { n.classList.remove("active"); });
+    if (el && el.classList.contains("nav-item")) el.classList.add("active");
+  }
+
+  document.querySelectorAll(".nav-cat").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var group = btn.closest(".nav-group");
+      var wasExpanded = group.classList.contains("expanded");
+      document.querySelectorAll(".nav-group").forEach(function (g) { g.classList.remove("expanded"); });
+      if (!wasExpanded) group.classList.add("expanded");
+    });
+  });
+
+  document.getElementById("navToggle").addEventListener("click", function () {
+    document.body.classList.toggle("nav-open");
+  });
+  document.getElementById("scrim").addEventListener("click", function () {
+    document.body.classList.remove("nav-open");
+  });
+  document.querySelectorAll(".nav-item").forEach(function (n) {
+    n.addEventListener("click", function () {
+      if (window.matchMedia("(max-width: 1024px)").matches) document.body.classList.remove("nav-open");
+    });
+  });
+
+  document.querySelectorAll(".info-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var group = btn.closest(".nav-group");
+      group.classList.toggle("noted");
+      btn.setAttribute("aria-expanded", group.classList.contains("noted") ? "true" : "false");
+    });
+  });
+
+  document.querySelectorAll("[data-pane]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var pane = el.dataset.pane;
+      if (pane === "placeholder") {
+        document.getElementById("phTitle").textContent = el.dataset.title || "";
+        document.getElementById("phDesc").textContent = el.dataset.desc || "這塊還沒做，先把工作與報告兩層跑通。";
+        renderPlaceholderDetail(el);
+      }
+      showPane(pane);
+      setActiveNav(el);
+    });
+  });
+
+  /* ---------- ops iframe ---------- */
+  var opsFrame = document.getElementById("opsFrame");
+  opsFrame.addEventListener("load", updateHomeStats);
+
+  function readOpsState() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+
+  function updateHomeStats() {
+    var s = readOpsState();
+    var label = document.getElementById("opsCountLabel");
+    if (!s) { label.textContent = "尚未初始化"; return; }
+    var active = s.cards.filter(function (c) { return c.status !== "done" && c.status !== "backlog"; }).length;
+    label.textContent = active + " 張進行中卡片 · " + s.lanes.length + " 條事業線";
+  }
+
+  /* ---------- report pane ---------- */
+  function renderReport() {
+    var s = readOpsState();
+    var statsEl = document.getElementById("reportStats");
+    var lanesEl = document.getElementById("reportLanes");
+    var cosEl = document.getElementById("reportCos");
+    if (!s) { statsEl.innerHTML = "<p style='color:var(--canvas-ink-soft)'>營運看板還沒有資料，先開一次「專案：營運看板」讓它初始化。</p>"; lanesEl.innerHTML = ""; cosEl.innerHTML = ""; return; }
+
+    var todayISO = new Date().toISOString().slice(0, 10);
+    var dayDiff = function (a, b) { return a && b ? Math.round((new Date(b) - new Date(a)) / 864e5) : null; };
+
+    var active = s.cards.filter(function (c) { return c.status !== "done" && c.status !== "backlog"; });
+    var weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    var doneThisWeek = s.cards.filter(function (c) { return c.status === "done" && c.done >= weekAgo; }).length;
+    var blocked = s.cards.filter(function (c) { return c.blocked && c.status !== "done"; }).length;
+    var stuck = s.cards.filter(function (c) {
+      if (c.status === "done" || c.status === "backlog" || !c.started) return false;
+      return dayDiff(c.started, todayISO) > 14;
+    }).length;
+
+    var stats = [
+      { label: "全域在製品", value: active.length, warn: active.length > s.globalWip },
+      { label: "本週完成", value: doneThisWeek },
+      { label: "阻塞中", value: blocked, warn: blocked > 0 },
+      { label: "卡關 > 14 天", value: stuck, warn: stuck > 0 },
+    ];
+    statsEl.innerHTML = stats.map(function (x) {
+      return '<div class="stat-tile' + (x.warn ? " warn" : "") + '"><div class="label">' + x.label + '</div><div class="value">' + x.value + "</div></div>";
+    }).join("");
+
+    var laneColors = { resort: "#0f9d92", store: "#3cc4b4", finance: "#7ad4c8" };
+    var laneCounts = s.lanes.map(function (l) {
+      return { label: l.name, n: s.cards.filter(function (c) { return c.lane === l.id && c.status !== "done" && c.status !== "backlog"; }).length, color: laneColors[l.id] || "#3cc4b4" };
+    });
+    lanesEl.innerHTML = barListHTML(laneCounts);
+
+    var cosColors = { standard: "#90a4a0", expedite: "#ef5350", fixed: "#f5b301", intangible: "#22a06b" };
+    var cosLabels = { standard: "標準", expedite: "加急", fixed: "固定日期", intangible: "無形" };
+    var cosCounts = Object.keys(cosLabels).map(function (k) {
+      return { label: cosLabels[k], n: active.filter(function (c) { return c.cos === k; }).length, color: cosColors[k] };
+    });
+    cosEl.innerHTML = barListHTML(cosCounts);
+  }
+
+  function barListHTML(rows) {
+    var max = Math.max.apply(null, rows.map(function (r) { return r.n; }).concat([1]));
+    return rows.map(function (r) {
+      var pct = Math.round((r.n / max) * 100);
+      return '<div class="bar-row"><span class="lbl">' + r.label + '</span><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + r.color + '"></div></div><span class="n">' + r.n + "</span></div>";
+    }).join("");
+  }
+
+  /* ---------- create button ---------- */
+  document.getElementById("createBtn").addEventListener("click", function () {
+    showPane("ops");
+    setActiveNav(document.querySelector('.nav-item[data-pane="ops"]'));
+    var group = document.querySelector('.nav-group[data-cat="work"]');
+    document.querySelectorAll(".nav-group").forEach(function (g) { g.classList.remove("expanded"); });
+    group.classList.add("expanded");
+    setTimeout(function () {
+      if (opsFrame.contentWindow && opsFrame.contentWindow.openCardModal) opsFrame.contentWindow.openCardModal();
+    }, 120);
+  });
+
+  document.getElementById("newProjectBtn").addEventListener("click", function () {
+    shellToast("目前只有一個專案（營運看板）。多專案架構要先確定第二個真的要開才做。");
+  });
+
+  /* ---------- search ---------- */
+  document.getElementById("searchInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") shellToast("搜尋功能尚未串接（原型階段）");
+  });
+
+  /* ---------- greeting ---------- */
+  (function () {
+    var d = new Date();
+    var weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    document.getElementById("todayLabel").textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日，週" + weekdays[d.getDay()];
+    var h = d.getHours();
+    var period = h < 11 ? "早安" : h < 18 ? "午安" : "晚安";
+    document.getElementById("greetLabel").textContent = "Balian，" + period;
+  })();
+
+  /* ---------- avatar ---------- */
+  document.getElementById("avatarBtn").addEventListener("click", function () {
+    var el = document.querySelector('.nav-item[data-pane="people-profile"]');
+    if (el) el.click();
+  });
+
+  /* ---------- 人員資料 <-> 出勤紀錄 串聯 ---------- */
+  function openPeoplePane(pane) {
+    showPane(pane);
+    setActiveNav(document.querySelector('.nav-item[data-pane="' + pane + '"]'));
+    document.querySelectorAll(".nav-group").forEach(function (g) { g.classList.remove("expanded"); });
+    document.querySelector('.nav-group[data-cat="people"]').classList.add("expanded");
+  }
+
+  window.addEventListener("message", function (e) {
+    var msg = e.data;
+    if (!msg || !msg.type) return;
+    if (msg.type === "open-attendance" || msg.type === "open-profile") {
+      var isAttendance = msg.type === "open-attendance";
+      openPeoplePane(isAttendance ? "xiaoji-checkin" : "people-profile");
+      var frame = document.getElementById(isAttendance ? "checkinFrame" : "profileFrame");
+      setTimeout(function () {
+        frame.contentWindow.postMessage({ type: "focus-worker", worker_id: msg.worker_id, worker_name: msg.worker_name }, "*");
+      }, 150);
+    }
+  });
+
+  /* ---------- placeholder 前置條件 ---------- */
+  var PH_STATUS = {
+    ready:   { label: "條件已滿足，可以動了", cls: "ph-ready" },
+    partial: { label: "部分滿足，有一項待解", cls: "ph-partial" },
+    decide:  { label: "卡在決策，不是技術", cls: "ph-decide" },
+    blocked: { label: "前置條件未滿足", cls: "ph-blocked" }
+  };
+  var PH_ASSESSED = "2026-08-24";
+
+  function renderPlaceholderDetail(el) {
+    var box = document.getElementById("phDetail");
+    if (!el.dataset.blocker) { box.hidden = true; return; }
+    var st = PH_STATUS[el.dataset.status] || PH_STATUS.blocked;
+    document.getElementById("phBlocker").textContent = el.dataset.blocker;
+    document.getElementById("phEvidence").textContent = el.dataset.evidence || "";
+    var badge = document.getElementById("phStatus");
+    badge.textContent = st.label;
+    badge.className = "ph-status " + st.cls;
+    document.getElementById("phBadge").textContent =
+      el.dataset.status === "ready" ? "條件已到位" : "即將推出";
+    document.getElementById("phAsOf").textContent = PH_ASSESSED + " 實地查證，之後可能變動";
+    box.hidden = false;
+  }
+
+  /* ---------- toast ---------- */
+  var toastTimer;
+  function shellToast(msg) {
+    var el = document.getElementById("shellToast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 3200);
+  }
+
+  updateHomeStats();
+})();
+</script>
