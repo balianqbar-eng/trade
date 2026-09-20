@@ -1,0 +1,28 @@
+{
+  "xiaoji": {
+    "label": "小雞打工出勤系統",
+    "rule": "主.次.修，次與修都從 1 起算（patch=小變動 / minor=約三項功能 / major=介面大改）",
+    "targets": [
+      {
+        "file": "xiaoji-checkin/小雞打卡出勤紀錄.html",
+        "desc": "管理端 h1 版本",
+        "pattern": "(<span id=\"appVersion\"[^>]*>)v(\\d+\\.\\d+\\.\\d+)(</span>)"
+      },
+      {
+        "file": "xiaoji-checkin/人員個人資料.html",
+        "desc": "人員個人資料頁 h1 版本",
+        "pattern": "(<span id=\"appVersion\"[^>]*>)v(\\d+\\.\\d+\\.\\d+)(</span>)"
+      },
+      {
+        "file": "xiaoji-checkin/src/pages/my-records.js",
+        "desc": "LIFF 我的班表與打卡 頁尾版本",
+        "pattern": "(color:#b0b0b0;\">)v(\\d+\\.\\d+\\.\\d+)(</div>)"
+      },
+      {
+        "file": "xiaoji-checkin/src/pages/shift.js",
+        "desc": "LIFF 排班登記 頁尾版本",
+        "pattern": "(color:#b0b0b0;\">)v(\\d+\\.\\d+\\.\\d+)(</div>)"
+      }
+    ]
+  }
+}
